@@ -131,7 +131,6 @@ function api_verifyLogin(nrpp, password, deviceId) {
 function api_submitPerjalananDinas(payload, user) {
   try {
     if (!user.lokasi) throw new Error("Data Lokasi Karyawan kosong di Master Database!");
-
     const userLokasiUpper = user.lokasi.toString().trim().toUpperCase();
     const isSales = (userLokasiUpper === "SALES" || user.jabatan.toString().trim().toUpperCase() === "SALES");
     
@@ -140,60 +139,79 @@ function api_submitPerjalananDinas(payload, user) {
     
     let sheet = dbApp.getSheetByName(targetSheetName);
     if (!sheet) throw new Error("Sheet database tujuan ('" + targetSheetName + "') tidak ditemukan di database!");
-
+    
     const timestamp = new Date();
     const timeToSave = Utilities.formatDate(timestamp, "Asia/Jakarta", "yyyy/MM/dd HH:mm:ss");
     
-    // [UPDATE BUG FIX] Omni-Format Validator untuk Waktu Indonesia Barat
     const d_wib = Utilities.formatDate(timestamp, "Asia/Jakarta", "dd");
     const m_wib = Utilities.formatDate(timestamp, "Asia/Jakarta", "MM");
     const y_wib = Utilities.formatDate(timestamp, "Asia/Jakarta", "yyyy");
 
-    const checkFormats = [
-        `${y_wib}/${m_wib}/${d_wib}`, // 2026/04/11
-        `${d_wib}/${m_wib}/${y_wib}`, // 11/04/2026
-        `${y_wib}-${m_wib}-${d_wib}`, // 2026-04-11
-        `${d_wib}-${m_wib}-${y_wib}`  // 11-04-2026
-    ];
-
     // ==========================================================
-    // PROTOKOL ODOC (One-Day-One-Checkin)
+    // PROTOKOL ODOC (One-Day-One-Checkin) - THE ULTIMATE TRX-EPOCH VALIDATOR
     // ==========================================================
     if (user.jabatan !== "Super Admin" && user.jabatan !== "Administrator") {
         const dataLog = sheet.getDataRange().getValues();
         
-        let timeIndex = -1;
-        let nrppIndex = -1;
+        let idIndex = 0;
+        let nrppIndex = 1;
         
         if (dataLog.length > 0) {
             let header = dataLog[0];
             for(let c = 0; c < header.length; c++) {
                 let colName = header[c].toString().toUpperCase().trim();
-                if(colName === "WAKTU_KELUAR" || colName === "WAKTU KELUAR") timeIndex = c;
+                if(colName === "ID_TRANSAKSI" || colName === "ID") idIndex = c;
                 if(colName === "NRPP") nrppIndex = c;
             }
         }
-        
-        if (timeIndex === -1) timeIndex = isSales ? 10 : 11;
-        if (nrppIndex === -1) nrppIndex = 1;
 
         for (let i = 1; i < dataLog.length; i++) {
-            if (dataLog[i][nrppIndex].toString().trim() === user.nrpp.toString().trim()) {
-                let rawKeluar = dataLog[i][timeIndex];
-                if (rawKeluar) {
-                    let rawKeluarStr = "";
-                    if (rawKeluar instanceof Date) {
-                        rawKeluarStr = Utilities.formatDate(rawKeluar, "Asia/Jakarta", "yyyy/MM/dd");
-                    } else {
-                        rawKeluarStr = rawKeluar.toString();
-                    }
+            let dbNRPP = String(dataLog[i][nrppIndex]).trim().toUpperCase();
+            let reqNRPP = String(user.nrpp).trim().toUpperCase();
+            
+            let isUserMatch = (dbNRPP === reqNRPP);
+            if (!isUserMatch && dbNRPP !== "" && reqNRPP !== "" && !isNaN(dbNRPP) && !isNaN(reqNRPP)) {
+                isUserMatch = (Number(dbNRPP) === Number(reqNRPP));
+            }
+            
+            if (isUserMatch) {
+                let isAlreadyClockedIn = false;
+                let cellID = String(dataLog[i][idIndex]).trim();
+                
+                // [KUNCI ABSOLUT]: Ekstrak Waktu Langsung dari ID Transaksi (TRX-17...)
+                // Mengabaikan kolom tanggal Google Sheets sepenuhnya agar kebal Timezone Server.
+                if (cellID.startsWith("TRX-")) {
+                    let epochStr = cellID.replace("TRX-", "");
+                    let epochNum = parseInt(epochStr, 10);
                     
-                    // Cek apakah rawKeluarStr mengandung salah satu dari format tanggal hari ini
-                    let isAlreadyClockedIn = checkFormats.some(fmt => rawKeluarStr.includes(fmt));
-                    
-                    if (isAlreadyClockedIn) {
-                        return { status: "error", message: "⛔ FRAUD ALERT: Anda sudah melakukan absensi keberangkatan hari ini. (Limit 1x/Hari)" };
+                    if (!isNaN(epochNum)) {
+                        let logDate = new Date(epochNum);
+                        let r_y = Utilities.formatDate(logDate, "Asia/Jakarta", "yyyy");
+                        let r_m = Utilities.formatDate(logDate, "Asia/Jakarta", "MM");
+                        let r_d = Utilities.formatDate(logDate, "Asia/Jakarta", "dd");
+                        
+                        if (r_y === y_wib && r_m === m_wib && r_d === d_wib) {
+                            isAlreadyClockedIn = true;
+                        }
                     }
+                } else {
+                    // Fallback Plan: String Scanner jika ID rusak (Sangat jarang terjadi)
+                    let timeIndex = isSales ? 10 : 11;
+                    let fallbackDate = String(dataLog[i][timeIndex]);
+                    let d_nz = parseInt(d_wib, 10).toString();
+                    let m_nz = parseInt(m_wib, 10).toString();
+                    const checkFormats = [
+                        `${y_wib}/${m_wib}/${d_wib}`, `${d_wib}/${m_wib}/${y_wib}`,
+                        `${y_wib}-${m_wib}-${d_wib}`, `${d_wib}-${m_wib}-${y_wib}`,
+                        `${d_nz}/${m_nz}/${y_wib}`, `${m_nz}/${d_nz}/${y_wib}`, `${y_wib}/${m_nz}/${d_nz}`
+                    ];
+                    if (checkFormats.some(fmt => fallbackDate.includes(fmt))) {
+                        isAlreadyClockedIn = true;
+                    }
+                }
+
+                if (isAlreadyClockedIn) {
+                    return { status: "error", message: "⛔ FRAUD ALERT: Anda sudah melakukan absensi keberangkatan hari ini. (Limit 1x/Hari)" };
                 }
             }
         }
@@ -233,7 +251,7 @@ function api_submitPerjalananDinas(payload, user) {
         const timeStr = Utilities.formatDate(timestamp, "Asia/Jakarta", "HH:mm");
         const dataRekap = rekapSheet.getDataRange().getValues();
         let targetRow = -1; let targetCol = -1;
-
+        
         for (let r = 1; r < dataRekap.length; r++) {
           if (dataRekap[r][0].toString() === user.nrpp.toString()) { targetRow = r + 1; break; }
         }
@@ -268,7 +286,7 @@ function api_submitPerjalananDinas(payload, user) {
         }
 
         rekapSheet.getRange(targetRow, targetCol).setValue(timeStr); 
-        rekapSheet.getRange(targetRow, targetCol + 2).setValue(statusAbsensi); 
+        rekapSheet.getRange(targetRow, targetCol + 2).setValue(statusAbsensi);
       }
     } catch(e) { console.error("Error DB_REKAP IN: " + e.message); }
 
@@ -277,7 +295,6 @@ function api_submitPerjalananDinas(payload, user) {
       message: "Keberangkatan Berhasil. Status: " + statusAbsensi,
       data: { idTransaksi: idTransaksi, waktuKeluar: timestamp.toLocaleString('id-ID'), lokasi: payload.lokasi, customer: payload.customer, statusAbsensi: statusAbsensi }
     };
-
   } catch (error) {
     return { status: "error", message: error.toString() };
   }
