@@ -1,0 +1,75 @@
+<script>
+// ==============================================================================
+// FILE: JS_Auth.html
+// DESKRIPSI: Modul Layar Login dan Autentikasi (Anti-Fraud Device Binding)
+// ==============================================================================
+
+function renderView_Login() {
+    DOM_Engine.clear('sys-root');
+    const root = document.getElementById('sys-root');
+    
+    const bgLeft = DOM_Engine.create('div', 'hidden lg:flex lg:w-1/2 bg-blue-600 flex-col justify-center items-center p-12 relative overflow-hidden', {}, [
+        DOM_Engine.create('div', 'absolute inset-0 bg-gradient-to-br from-blue-700 to-blue-900 opacity-90'),
+        DOM_Engine.create('div', 'relative z-10 text-white text-center', {}, [
+            DOM_Engine.create('div', 'w-24 h-24 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center mx-auto mb-6 border border-white/20', {}, [DOM_Engine.create('i', 'fa-solid fa-shield-halved text-4xl text-emerald-400')]),
+            DOM_Engine.create('h1', 'text-4xl font-bold mb-4 tracking-tight', {}, ['C.E.P.U ERP']),
+            DOM_Engine.create('p', 'text-blue-100 text-lg max-w-md mx-auto', {}, ['Catatan Evaluasi Pekerja Utama. Enterprise System with Anti-Fraud Protocol.'])
+        ])
+    ]);
+
+    const inpNRPP = DOM_Engine.create('input', 'input-premium w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-4 text-slate-800', { type: 'text', id: 'auth-inp-nrpp', placeholder: 'Masukkan NRPP', required: 'true' });
+    const inpPass = DOM_Engine.create('input', 'input-premium w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-4 text-slate-800', { type: 'password', id: 'auth-inp-pass', placeholder: 'Kata Sandi', required: 'true' });
+    
+    const btnSubmit = DOM_Engine.create('button', 'btn-primary w-full text-white py-4 px-4 rounded-xl font-bold text-lg shadow-premium mt-4 flex items-center justify-center gap-2', { type: 'submit', id: 'auth-btn-submit' }, ['Masuk Sistem ', DOM_Engine.create('i', 'fa-solid fa-arrow-right')]);
+
+    const form = DOM_Engine.create('form', 'w-full max-w-sm fade-in-up', { onSubmit: handleAction_Login }, [
+        DOM_Engine.create('h2', 'text-3xl font-bold text-slate-900 mb-2', {}, ['Otorisasi Akses']),
+        DOM_Engine.create('p', 'text-slate-500 mb-8 text-sm', {}, ['Silakan verifikasi identitas Anda. Perangkat akan dikunci untuk keamanan.']),
+        DOM_Engine.create('div', 'space-y-4 mb-6', {}, [inpNRPP, inpPass]),
+        btnSubmit
+    ]);
+
+    const bgRight = DOM_Engine.create('div', 'w-full lg:w-1/2 flex items-center justify-center p-8 bg-white', {}, [form]);
+    
+    root.appendChild(bgLeft);
+    root.appendChild(bgRight);
+}
+
+function handleAction_Login(e) {
+    e.preventDefault();
+    const nrpp = document.getElementById('auth-inp-nrpp').value;
+    const pass = document.getElementById('auth-inp-pass').value;
+    const btn = document.getElementById('auth-btn-submit');
+    const deviceId = sysGetDeviceId(); // Ambil Device ID dari Engine
+    
+    btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Memverifikasi...';
+    btn.disabled = true;
+
+    google.script.run
+        .withSuccessHandler((res) => {
+            if (res.status === "success") {
+                sysShowToast("Akses Diterima! Perangkat Tervalidasi.", "success");
+                SysState.user = res.data;
+                localStorage.setItem('cepu_session', JSON.stringify(res.data));
+                renderView_MainLayout();
+            } else {
+                sysShowToast(res.message, "error");
+                btn.innerHTML = 'Masuk Sistem <i class="fa-solid fa-arrow-right"></i>';
+                btn.disabled = false;
+            }
+        })
+        .withFailureHandler(() => {
+            sysShowToast("Gagal terhubung ke server ERP.", "error");
+            btn.innerHTML = 'Masuk Sistem <i class="fa-solid fa-arrow-right"></i>';
+            btn.disabled = false;
+        })
+        .api_verifyLogin(nrpp, pass, deviceId); // Kirim deviceId ke Backend
+}
+
+function handleAction_Logout() {
+    localStorage.removeItem('cepu_session');
+    SysState.user = null;
+    SysState.dinas.isActive = false;
+    renderView_Login();
+}
+</script>
