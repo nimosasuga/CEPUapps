@@ -1,0 +1,578 @@
+<script>
+// ==============================================================================
+// FILE: JS_Dashboard.html
+// DESKRIPSI: Modul UI Dashboard (Hybrid Scanner, Keberangkatan & Absen Pulang)
+// UPDATE: Dynamic Status Absensi Field
+// ==============================================================================
+
+function renderView_MainLayout() {
+    DOM_Engine.clear('sys-root');
+    const root = document.getElementById('sys-root');
+    const isSuperAdmin = (SysState.user.jabatan === 'Super Admin' || SysState.user.jabatan === 'Administrator');
+    
+    const overlay = DOM_Engine.create('div', 'fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 lg:hidden opacity-0 pointer-events-none transition-opacity duration-300', { id: 'nav-overlay', onClick: toggleSidebar });
+    
+    const menuItems = [
+        DOM_Engine.create('div', 'flex items-center gap-3 px-6 py-3.5 mx-3 rounded-xl font-medium bg-blue-600 text-white shadow-md cursor-pointer', {}, [DOM_Engine.create('i', 'fa-solid fa-car-side w-5 text-center'), DOM_Engine.create('span', '', {}, ['Perjalanan Dinas'])])
+    ];
+
+    if (isSuperAdmin) {
+        const createAdminMenu = (icon, text) => DOM_Engine.create('div', 'flex items-center gap-3 px-6 py-3.5 mx-3 rounded-xl font-medium text-amber-500 hover:bg-slate-800 hover:text-amber-400 cursor-pointer mt-1 border border-amber-500/20', { onClick: () => sysShowToast(`Akses Modul: ${text}`) }, [DOM_Engine.create('i', `fa-solid ${icon} w-5 text-center`), DOM_Engine.create('span', '', {}, [text])]);
+        menuItems.push(DOM_Engine.create('div', 'px-6 mt-6 mb-2 text-xs font-bold text-slate-500 tracking-wider', {}, ['SUPER ADMIN ACCESS']));
+        menuItems.push(createAdminMenu('fa-database', 'Master Data (DB)'));
+        menuItems.push(createAdminMenu('fa-users-gear', 'Kelola Karyawan'));
+        menuItems.push(createAdminMenu('fa-file-shield', 'Log Sistem (All)'));
+    }
+
+    const sidebarMenu = DOM_Engine.create('div', 'py-6 space-y-1 flex-1 overflow-y-auto hide-scrollbar', {}, menuItems);
+
+    // [UPDATE] Merangkai Subtitle Profil Tanpa Judul
+    const profileSubtitle = [
+        SysState.user.jabatan,
+        SysState.user.golongan,
+        SysState.user.statusKaryawan,
+        SysState.user.departemen,
+        SysState.user.lokasi
+    ].filter(Boolean).join(' • ');
+
+    const userCard = DOM_Engine.create('div', `p-4 mx-3 mb-4 rounded-xl flex items-center gap-3 ${isSuperAdmin ? 'bg-amber-500/10 border border-amber-500/30' : 'bg-slate-800'}`, {}, [
+        DOM_Engine.create('div', `w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${isSuperAdmin ? 'bg-amber-500' : 'bg-slate-700'}`, {}, [DOM_Engine.create('i', `fa-solid ${isSuperAdmin ? 'fa-crown text-white' : 'fa-user text-slate-300'}`)]),
+        DOM_Engine.create('div', 'overflow-hidden flex-1', {}, [
+            DOM_Engine.create('p', 'text-sm font-bold text-white truncate', {}, [SysState.user.nama]),
+            // [UPDATE] Injeksi Data ke UI
+            DOM_Engine.create('p', `text-[10px] leading-tight mt-1 ${isSuperAdmin ? 'text-amber-400 font-semibold' : 'text-slate-400'}`, {}, [profileSubtitle]) 
+        ])
+    ]);
+
+    const btnLogout = DOM_Engine.create('button', 'mx-3 mb-6 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium text-red-400 hover:bg-red-500/10 transition-colors border border-red-500/20', { onClick: handleAction_Logout }, [DOM_Engine.create('i', 'fa-solid fa-power-off'), ' Keluar']);
+    const sidebar = DOM_Engine.create('nav', 'w-72 bg-slate-900 h-full flex flex-col fixed lg:static z-50 sidebar-transition -translate-x-full lg:translate-x-0', { id: 'nav-sidebar' }, [
+        DOM_Engine.create('div', 'h-16 flex items-center gap-3 px-6 border-b border-white/10', {}, [DOM_Engine.create('div', 'w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center', {}, [DOM_Engine.create('i', 'fa-solid fa-layer-group text-white text-sm')]), DOM_Engine.create('span', 'font-bold text-xl text-white', {}, ['C.E.P.U'])]),
+        sidebarMenu, userCard, btnLogout
+    ]);
+
+    const header = DOM_Engine.create('header', 'bg-white shadow-sm h-16 sticky top-0 z-30 flex items-center justify-between px-4 sm:px-6', {}, [
+        DOM_Engine.create('div', 'flex items-center gap-4', {}, [
+            DOM_Engine.create('button', 'lg:hidden w-10 h-10 flex items-center justify-center text-slate-500 hover:bg-slate-100 rounded-xl', { onClick: toggleSidebar }, [DOM_Engine.create('i', 'fa-solid fa-bars')]),
+            DOM_Engine.create('h1', 'font-bold text-lg text-slate-800', {}, ['Modul Operasional'])
+        ])
+    ]);
+
+    const workspace = DOM_Engine.create('div', 'p-4 sm:p-6 lg:p-8 max-w-3xl mx-auto w-full', { id: 'nav-workspace' });
+    const scrollArea = DOM_Engine.create('main', 'flex-1 overflow-y-auto bg-slate-50', {}, [header, workspace]);
+
+    const modalScanner = DOM_Engine.create('div', 'fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] hidden flex items-center justify-center p-4 opacity-0 transition-opacity', { id: 'dinas-modal' }, [
+        DOM_Engine.create('div', 'bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform scale-95 transition-transform', { id: 'dinas-modal-content' }, [
+            DOM_Engine.create('div', 'p-4 border-b flex justify-between items-center bg-slate-50', {}, [
+                DOM_Engine.create('h3', 'font-semibold', {}, ['Scan Barcode POS']),
+                DOM_Engine.create('button', 'w-8 h-8 rounded-full hover:bg-red-50 text-slate-400 hover:text-red-500', { onClick: action_closeScanner }, [DOM_Engine.create('i', 'fa-solid fa-times')])
+            ]),
+            DOM_Engine.create('div', 'flex border-b border-slate-200', {}, [
+                DOM_Engine.create('button', 'flex-1 py-3 text-sm font-semibold border-b-2 border-blue-600 text-blue-600', { id: 'dinas-tab-cam', onClick: () => switchScannerTab('cam') }, ['Kamera']),
+                DOM_Engine.create('button', 'flex-1 py-3 text-sm font-semibold border-b-2 border-transparent text-slate-500', { id: 'dinas-tab-file', onClick: () => switchScannerTab('file') }, ['Upload Gambar'])
+            ]),
+            DOM_Engine.create('div', 'p-4', { id: 'dinas-area-cam' }, [
+                DOM_Engine.create('div', 'w-full rounded-xl overflow-hidden bg-black flex items-center justify-center min-h-[250px]', { id: 'dinas-reader' })
+            ]),
+            DOM_Engine.create('div', 'p-6 hidden', { id: 'dinas-area-file' }, [
+                DOM_Engine.create('div', 'border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 p-8 flex flex-col items-center justify-center', {}, [
+                    DOM_Engine.create('i', 'fa-solid fa-image text-4xl text-blue-400 mb-3'),
+                    DOM_Engine.create('input', 'block w-full text-sm text-slate-500 mt-4 cursor-pointer', { type: 'file', accept: 'image/*', onChange: action_processImageFile })
+                ])
+            ])
+        ])
+    ]);
+
+    root.appendChild(overlay);
+    root.appendChild(sidebar);
+    root.appendChild(scrollArea);
+    root.appendChild(modalScanner);
+
+    renderWorkspace_Dinas();
+}
+
+function toggleSidebar() {
+    SysState.ui.sidebarOpen = !SysState.ui.sidebarOpen;
+    document.getElementById('nav-sidebar').classList.toggle('-translate-x-full');
+    const overlay = document.getElementById('nav-overlay');
+    overlay.classList.toggle('opacity-0');
+    overlay.classList.toggle('pointer-events-none');
+}
+
+// --- CARI DAN GANTI FUNGSI INI DI JS_Dashboard.html ---
+
+function renderWorkspace_Dinas() {
+    DOM_Engine.clear('nav-workspace');
+    const container = document.getElementById('nav-workspace');
+
+    if (SysState.dinas.isActive) {
+        container.appendChild(buildCard_ActiveDinas());
+        SysState.dinas.isLocValid = false; 
+        SysState.dinas.isBarcodeValid = false;
+        action_getGPS('dinas-txt-gps-pulang', 'dinas-icn-gps-pulang');
+    } else {
+        container.appendChild(DOM_Engine.create('div', 'flex flex-col items-center py-12', {}, [
+            DOM_Engine.create('i', 'fa-solid fa-circle-notch fa-spin text-3xl text-blue-600 mb-4'),
+            DOM_Engine.create('p', 'text-slate-500 font-medium', {}, ['Mempersiapkan Form & Riwayat...'])
+        ]));
+
+        google.script.run
+            .withSuccessHandler((res) => {
+                DOM_Engine.clear('nav-workspace');
+                if (res.status === "success") {
+                    
+                    const userRole = SysState.user.jabatan.toUpperCase();
+                    const userLoc = SysState.user.lokasi.toUpperCase();
+                    
+                    if (userRole === 'SALES' || userLoc === 'SALES') {
+                        container.appendChild(buildForm_Sales(res.data));
+                    } else {
+                        container.appendChild(buildForm_NewDinas(res.data));
+                    }
+                    
+                    action_getGPS('dinas-txt-gps', 'dinas-icn-gps');
+                } else {
+                    sysShowToast("Gagal memuat data: " + res.message, "error");
+                }
+            })
+            // [UPDATE]: Kirim seluruh objek user ke backend agar lebih cerdas
+            .api_getInitFormData(SysState.user); 
+    }
+}
+
+function buildForm_NewDinas(initData = { statusOptions: [], historyST: [] }) {
+    const isSuperAdmin = (SysState.user.jabatan === 'Super Admin' || SysState.user.jabatan === 'Administrator');
+    
+    const createField = (label, id, placeholder, extProps = {}) => DOM_Engine.create('div', '', {}, [
+        DOM_Engine.create('label', 'block text-sm font-semibold text-slate-700 mb-1.5', {}, [label]),
+        DOM_Engine.create('input', 'input-premium w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5', { type: 'text', id: id, placeholder: placeholder, required: 'true', ...extProps })
+    ]);
+
+    const optElements = initData.statusOptions.map(opt => DOM_Engine.create('option', '', { value: opt.code }, [ `${opt.code} - ${opt.desc}` ]));
+    const selStatus = DOM_Engine.create('select', 'input-premium w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 appearance-none', { id: 'dinas-sel-status', required: 'true' }, optElements);
+    const groupStatus = DOM_Engine.create('div', 'relative', {}, [
+        DOM_Engine.create('label', 'block text-sm font-semibold text-slate-700 mb-1.5', {}, ['Status Kehadiran']),
+        selStatus,
+        DOM_Engine.create('i', 'fa-solid fa-chevron-down absolute right-4 top-[42px] text-slate-400 pointer-events-none')
+    ]);
+
+    // [UPDATE] Setup Datalist Riwayat ST
+    const stOptions = initData.historyST.map(h => DOM_Engine.create('option', '', { value: h.noST }));
+    const stDataList = DOM_Engine.create('datalist', '', { id: 'list-history-st' }, stOptions);
+
+    // [UPDATE] Form No ST dengan Fitur Auto-fill
+    const fNoST = DOM_Engine.create('div', '', {}, [
+        DOM_Engine.create('label', 'block text-sm font-semibold text-slate-700 mb-1.5', {}, ['Nomor ST']),
+        DOM_Engine.create('input', 'input-premium w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5', { 
+            type: 'text', id: 'dinas-inp-nost', placeholder: 'Contoh: 0982', required: 'true', list: 'list-history-st', autocomplete: 'off',
+            onInput: function(e) {
+                const val = this.value.trim();
+                const found = initData.historyST.find(h => h.noST === val);
+                if (found) {
+                    document.getElementById('dinas-inp-cust').value = found.customer;
+                    document.getElementById('dinas-inp-lokasi').value = found.lokasi;
+                }
+            }
+        }),
+        stDataList
+    ]);
+
+    const fCust = createField('Nama Customer', 'dinas-inp-cust', 'MAJU BERSAMA', {
+        onInput: function() { this.value = this.value.toUpperCase(); },
+        onBlur: function() {
+            let val = this.value.trim();
+            if (val.length > 0 && !val.startsWith('PT. ')) { this.value = 'PT. ' + val.replace(/^PT\.?\s*/i, ''); }
+        }
+    });
+
+    const fLokasi = createField('Area / Lokasi', 'dinas-inp-lokasi', 'Contoh: Cikarang', {
+        onInput: function() { this.value = this.value.toUpperCase(); } // Auto uppercase juga
+    });
+
+    const gpsBox = DOM_Engine.create('div', 'flex items-center justify-between p-4 bg-slate-50 border border-slate-200 rounded-xl', {}, [
+        DOM_Engine.create('div', 'flex items-center gap-3', {}, [
+            DOM_Engine.create('i', 'fa-solid fa-location-dot text-slate-400 text-lg', {id: 'dinas-icn-gps'}),
+            DOM_Engine.create('span', 'text-sm font-medium text-slate-600', {id: 'dinas-txt-gps'}, ['Mencari GPS...'])
+        ]),
+        DOM_Engine.create('button', 'text-sm bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-sm', { type: 'button', onClick: () => action_getGPS('dinas-txt-gps', 'dinas-icn-gps') }, ['Refresh'])
+    ]);
+
+    const scanBtn = DOM_Engine.create('button', 'w-full flex justify-center gap-2 bg-slate-800 hover:bg-slate-900 transition-colors text-white py-3.5 rounded-xl font-semibold mt-4', { type: 'button', onClick: action_openScanner }, [DOM_Engine.create('i', 'fa-solid fa-qrcode'), ' Buka Scanner (Kamera/File)']);
+    const scanStatus = DOM_Engine.create('p', 'text-xs text-red-500 mt-2 font-medium', {id: 'dinas-txt-barcode'}, ['*Wajib scan barcode pos (POS-SECURITY-FSET-01)']);
+
+    let bypassBtn = null;
+    if (isSuperAdmin) {
+        bypassBtn = DOM_Engine.create('button', 'w-full mt-2 py-2 text-xs font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100', { 
+            type: 'button', 
+            onClick: () => {
+                SysState.dinas.isLocValid = true; SysState.dinas.isBarcodeValid = true; SysState.dinas.kordinat = "BYPASS_ADMIN";
+                document.getElementById('dinas-txt-barcode').className = "text-sm text-amber-600 font-bold mt-2";
+                document.getElementById('dinas-txt-barcode').innerHTML = '<i class="fa-solid fa-crown"></i> Barcode Bypassed';
+                checkEligibility_Berangkat(); sysShowToast("Protokol Bypass Aktif!", "success");
+            } 
+        }, ['[SUPER ADMIN] Bypass Validasi Berangkat']);
+    }
+
+    const btnSubmit = DOM_Engine.create('button', 'btn-primary w-full text-white py-4 rounded-xl font-bold text-lg mt-8 opacity-50 cursor-not-allowed flex justify-center gap-2', { type: 'submit', id: 'dinas-btn-submit', disabled: 'true' }, [DOM_Engine.create('i', 'fa-solid fa-paper-plane'), ' Mulai Perjalanan']);
+
+    return DOM_Engine.create('div', 'bg-white p-6 sm:p-8 rounded-3xl shadow-premium fade-in border border-slate-100', {}, [
+        DOM_Engine.create('h2', 'text-2xl font-bold text-slate-800 mb-6', {}, ['Form Keberangkatan']),
+        DOM_Engine.create('form', 'space-y-5', { onSubmit: action_submitDinas }, [groupStatus, fNoST, fCust, fLokasi, DOM_Engine.create('div', 'pt-4 border-t', {}, [DOM_Engine.create('label', 'block text-sm font-semibold mb-1', {}, ['Status GPS']), gpsBox]), DOM_Engine.create('div', '', {}, [scanBtn, scanStatus, bypassBtn]), btnSubmit])
+    ]);
+}
+
+// ==========================================================
+// KUMPULAN FUNGSI KHUSUS DASHBOARD SALES
+// ==========================================================
+
+function buildCard_ActiveDinas() {
+    const isSuperAdmin = (SysState.user.jabatan === 'Super Admin' || SysState.user.jabatan === 'Administrator');
+    
+    const iconHeader = DOM_Engine.create('div', 'text-center border-b border-slate-100 pb-6 mb-6', {}, [
+        DOM_Engine.create('div', 'w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center text-2xl mx-auto mb-4', {}, [DOM_Engine.create('i', 'fa-solid fa-car-side')]),
+        DOM_Engine.create('h2', 'text-2xl font-bold text-slate-800', {}, ['Sedang Dalam Perjalanan']),
+        DOM_Engine.create('p', 'text-sm font-medium text-blue-600 mt-1', {}, ['Status: ' + SysState.dinas.data.statusAbsensi + ' | Keluar: ' + SysState.dinas.data.waktuKeluar])
+    ]);
+
+    const infoGrid = DOM_Engine.create('div', 'grid grid-cols-2 gap-4 mb-6', {}, [
+        DOM_Engine.create('div', 'bg-slate-50 p-4 rounded-xl border border-slate-100', {}, [DOM_Engine.create('p', 'text-xs text-slate-400 font-semibold', {}, ['CUSTOMER']), DOM_Engine.create('p', 'text-sm font-bold text-slate-800', {}, [SysState.dinas.data.customer])]),
+        DOM_Engine.create('div', 'bg-slate-50 p-4 rounded-xl border border-slate-100', {}, [DOM_Engine.create('p', 'text-xs text-slate-400 font-semibold', {}, ['LOKASI']), DOM_Engine.create('p', 'text-sm font-bold text-slate-800', {}, [SysState.dinas.data.lokasi])])
+    ]);
+
+    const gpsBoxPulang = DOM_Engine.create('div', 'flex items-center justify-between p-4 bg-slate-50 border border-slate-200 rounded-xl mb-4', {}, [
+        DOM_Engine.create('div', 'flex items-center gap-3', {}, [
+            DOM_Engine.create('i', 'fa-solid fa-location-dot text-slate-400 text-lg', {id: 'dinas-icn-gps-pulang'}),
+            DOM_Engine.create('span', 'text-sm font-medium text-slate-600', {id: 'dinas-txt-gps-pulang'}, ['Mencari GPS Kepulangan...'])
+        ]),
+        DOM_Engine.create('button', 'text-sm bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-sm', { type: 'button', onClick: () => action_getGPS('dinas-txt-gps-pulang', 'dinas-icn-gps-pulang') }, ['Refresh'])
+    ]);
+
+    // [UPDATE] Penambahan Elemen Scanner UI
+    const scanBtn = DOM_Engine.create('button', 'w-full flex justify-center gap-2 bg-slate-800 hover:bg-slate-900 transition-colors text-white py-3.5 rounded-xl font-semibold mb-2', { type: 'button', onClick: action_openScanner }, [DOM_Engine.create('i', 'fa-solid fa-qrcode'), ' Buka Scanner Kepulangan']);
+    const scanStatus = DOM_Engine.create('p', 'text-xs text-red-500 mb-4 font-medium', {id: 'dinas-txt-barcode'}, ['*Wajib scan barcode pos (POS-SECURITY-FSET-01)']);
+
+    let bypassBtn = null;
+    if (isSuperAdmin) {
+        bypassBtn = DOM_Engine.create('button', 'w-full mb-4 py-2 text-xs font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded-lg', { 
+            type: 'button', 
+            onClick: () => {
+                SysState.dinas.isLocValid = true; SysState.dinas.isBarcodeValid = true; SysState.dinas.kordinat = "BYPASS_ADMIN";
+                document.getElementById('dinas-txt-gps-pulang').className = "text-sm text-amber-600 font-bold";
+                document.getElementById('dinas-txt-gps-pulang').innerHTML = '<i class="fa-solid fa-crown"></i> GPS Bypassed';
+                document.getElementById('dinas-txt-barcode').className = "text-sm text-amber-600 font-bold mb-4";
+                document.getElementById('dinas-txt-barcode').innerHTML = '<i class="fa-solid fa-crown"></i> Barcode Bypassed';
+                checkEligibility_Pulang(); sysShowToast("Validasi Kepulangan Bypassed!", "success");
+            } 
+        }, ['[SUPER ADMIN] Bypass GPS & Barcode Pulang']);
+    }
+
+    const btnPulang = DOM_Engine.create('button', 'btn-primary w-full text-white py-4 rounded-xl font-bold text-lg opacity-50 cursor-not-allowed flex justify-center gap-2', { 
+        id: 'dinas-btn-pulang', disabled: 'true', onClick: action_submitPulang 
+    }, [DOM_Engine.create('i', 'fa-solid fa-house-chimney'), ' Absen Selesai (Pulang)']);
+
+    return DOM_Engine.create('div', 'bg-white p-6 sm:p-8 rounded-3xl shadow-premium fade-in border border-slate-100', {}, [
+        iconHeader, infoGrid, 
+        DOM_Engine.create('label', 'block text-sm font-semibold mb-1 text-slate-700', {}, ['Validasi Lokasi & Barcode Kepulangan']), 
+        gpsBoxPulang, scanBtn, scanStatus, bypassBtn, btnPulang // [UPDATE] Inject Scanner Disini
+    ]);
+}
+
+function checkEligibility_Berangkat() {
+    const btn = document.getElementById('dinas-btn-submit');
+    if (btn && SysState.dinas.isLocValid && SysState.dinas.isBarcodeValid) {
+        btn.removeAttribute('disabled'); btn.classList.remove('opacity-50', 'cursor-not-allowed');
+    }
+}
+
+function checkEligibility_Pulang() {
+    const btn = document.getElementById('dinas-btn-pulang');
+    // [UPDATE] Tambahan cek isBarcodeValid
+    if (btn && SysState.dinas.isLocValid && SysState.dinas.isBarcodeValid) {
+        btn.removeAttribute('disabled'); btn.classList.remove('opacity-50', 'cursor-not-allowed');
+    }
+}
+
+function action_getGPS(textId, iconId) {
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                SysState.dinas.kordinat = `${pos.coords.latitude}, ${pos.coords.longitude}`;
+                SysState.dinas.isLocValid = true;
+                const txtGps = document.getElementById(textId);
+                if(txtGps) {
+                    txtGps.textContent = `Akurasi: ${pos.coords.accuracy.toFixed(1)}m`;
+                    txtGps.className = 'text-sm font-semibold text-emerald-600';
+                    document.getElementById(iconId).className = "fa-solid fa-location-dot text-emerald-500 text-lg";
+                }
+                if(SysState.dinas.isActive) checkEligibility_Pulang(); else checkEligibility_Berangkat();
+            },
+            () => { sysShowToast("GPS gagal/ditolak.", "error"); }, { enableHighAccuracy: true }
+        );
+    }
+}
+
+let localHtml5QrCode = null;
+
+function switchScannerTab(tab) {
+    const tC = document.getElementById('dinas-tab-cam'), tF = document.getElementById('dinas-tab-file');
+    const aC = document.getElementById('dinas-area-cam'), aF = document.getElementById('dinas-area-file');
+
+    if (tab === 'cam') {
+        tC.className = "flex-1 py-3 text-sm font-semibold border-b-2 border-blue-600 text-blue-600";
+        tF.className = "flex-1 py-3 text-sm font-semibold border-b-2 border-transparent text-slate-500";
+        aC.classList.remove('hidden'); aF.classList.add('hidden'); action_startCamera();
+    } else {
+        tF.className = "flex-1 py-3 text-sm font-semibold border-b-2 border-blue-600 text-blue-600";
+        tC.className = "flex-1 py-3 text-sm font-semibold border-b-2 border-transparent text-slate-500";
+        aF.classList.remove('hidden'); aC.classList.add('hidden');
+        if (localHtml5QrCode && localHtml5QrCode.isScanning) { localHtml5QrCode.stop().catch(()=>{}); }
+    }
+}
+
+function action_openScanner() {
+    const m = document.getElementById('dinas-modal'); const mc = document.getElementById('dinas-modal-content');
+    m.classList.remove('hidden'); void m.offsetWidth; m.classList.remove('opacity-0'); mc.classList.remove('scale-95');
+    if (!localHtml5QrCode) localHtml5QrCode = new Html5Qrcode("dinas-reader");
+    switchScannerTab('cam');
+}
+
+function action_startCamera() {
+    if (!localHtml5QrCode || localHtml5QrCode.isScanning) return;
+    Html5Qrcode.getCameras().then(devices => {
+        if (devices && devices.length) {
+            let cameraId = devices[0].id; 
+            for (let i = 0; i < devices.length; i++) {
+                if (devices[i].label.toLowerCase().includes("back") || devices[i].label.toLowerCase().includes("belakang")) { cameraId = devices[i].id; break; }
+            }
+            localHtml5QrCode.start(cameraId, { fps: 10, qrbox: 250 }, processScanResult, () => {}).catch(() => { switchScannerTab('file'); });
+        } else { switchScannerTab('file'); }
+    }).catch(() => { switchScannerTab('file'); });
+}
+
+function action_processImageFile(e) {
+    if (e.target.files.length == 0) return;
+    if (!localHtml5QrCode) localHtml5QrCode = new Html5Qrcode("dinas-reader");
+    sysShowToast("Memproses gambar...", "info");
+    localHtml5QrCode.scanFile(e.target.files[0], true)
+        .then(decodedText => { processScanResult(decodedText); })
+        .catch(() => { sysShowToast("Barcode tidak ditemukan.", "error"); });
+    e.target.value = ""; 
+}
+
+function processScanResult(decodedText) {
+    if (decodedText === "POS-SECURITY-FSET-01") {
+        action_closeScanner(); SysState.dinas.isBarcodeValid = true;
+        const txtBarcode = document.getElementById('dinas-txt-barcode');
+        if (txtBarcode) {
+            txtBarcode.className = "text-sm text-emerald-600 font-bold mt-2 mb-4";
+            txtBarcode.innerHTML = '<i class="fa-solid fa-check-circle"></i> Barcode Valid (POS-SECURITY-FSET-01)';
+        }
+        // [UPDATE] Cek trigger berdasarkan mode aktif (Pulang atau Berangkat)
+        if (SysState.dinas.isActive) checkEligibility_Pulang(); 
+        else checkEligibility_Berangkat();
+        
+        sysShowToast("Barcode Diterima", "success");
+    } else { sysShowToast("Barcode Salah!", "error"); }
+}
+
+function action_closeScanner() {
+    const m = document.getElementById('dinas-modal'); const mc = document.getElementById('dinas-modal-content');
+    m.classList.add('opacity-0'); mc.classList.add('scale-95');
+    setTimeout(() => { m.classList.add('hidden'); if (localHtml5QrCode && localHtml5QrCode.isScanning) { localHtml5QrCode.stop().catch(()=>{}); } }, 300);
+}
+
+function action_submitDinas(e) {
+    e.preventDefault();
+    if (!SysState.dinas.isLocValid || !SysState.dinas.isBarcodeValid) return;
+    const btn = document.getElementById('dinas-btn-submit');
+    btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Memproses Keberangkatan...'; btn.disabled = true;
+
+    const payload = { 
+      noST: document.getElementById('dinas-inp-nost').value, 
+      customer: document.getElementById('dinas-inp-cust').value, 
+      lokasi: document.getElementById('dinas-inp-lokasi').value, 
+      kordinat: SysState.dinas.kordinat,
+      statusAbsensi: document.getElementById('dinas-sel-status').value // NEW: Kirim Status Absensi
+    };
+
+    google.script.run
+        .withSuccessHandler((res) => {
+            if(res.status === "success") { 
+                sysShowToast("Berangkat! Hati-hati.", "success"); 
+                SysState.dinas.isActive = true; 
+                SysState.dinas.data = res.data; 
+                localStorage.setItem('cepu_dinas_state', JSON.stringify(res.data));
+                renderWorkspace_Dinas(); 
+            } else { sysShowToast(res.message, "error"); btn.innerHTML = 'Mulai Perjalanan'; btn.disabled = false; }
+        })
+        .api_submitPerjalananDinas(payload, SysState.user);
+}
+
+
+function action_submitPulang() {
+    // [UPDATE] Penolakan jika barcode belum discan
+    if (!SysState.dinas.isLocValid || !SysState.dinas.isBarcodeValid) return;
+    
+    const btn = document.getElementById('dinas-btn-pulang');
+    btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Proses Kepulangan...'; btn.disabled = true;
+
+    const payload = { idTransaksi: SysState.dinas.data.idTransaksi, kordinatMasuk: SysState.dinas.kordinat };
+
+    google.script.run
+        .withSuccessHandler((res) => {
+            if(res.status === "success") { 
+                sysShowToast(`Selesai! Durasi: ${res.data.durasi} Jam | UPD: Rp${res.data.nominal}`, "success"); 
+                SysState.dinas.isActive = false; SysState.dinas.data = null; SysState.dinas.isBarcodeValid = false;
+                localStorage.removeItem('cepu_dinas_state');
+                renderWorkspace_Dinas(); 
+            } else { sysShowToast(res.message, "error"); btn.innerHTML = 'Absen Selesai (Pulang)'; btn.disabled = false; }
+        })
+        .api_submitPulangDinas(payload, SysState.user);
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    const uS = localStorage.getItem('cepu_session'), dS = localStorage.getItem('cepu_dinas_state');
+    if (uS) { 
+        SysState.user = JSON.parse(uS); 
+        if (dS) { SysState.dinas.isActive = true; SysState.dinas.data = JSON.parse(dS); }
+        renderView_MainLayout(); 
+    } else { renderView_Login(); }
+});
+
+// --- CARI DAN GANTI 2 FUNGSI INI DI JS_Dashboard.html ---
+
+function buildForm_Sales(initData = { statusOptions: [] }) {
+    const isSuperAdmin = (SysState.user.jabatan === 'Super Admin' || SysState.user.jabatan === 'Administrator');
+
+    const optElements = initData.statusOptions.map(opt => DOM_Engine.create('option', '', { value: opt.code }, [ `${opt.code} - ${opt.desc}` ]));
+    
+    // [UPDATE] Penambahan Event OnChange pada Dropdown Status
+    const selStatus = DOM_Engine.create('select', 'input-premium w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 appearance-none', { 
+        id: 'sales-sel-status', required: 'true',
+        onChange: function(e) {
+            const val = this.value;
+            const extraFields = document.getElementById('sales-extra-fields');
+            if (val === 'VC' || val === 'ST') {
+                extraFields.classList.remove('hidden');
+            } else {
+                extraFields.classList.add('hidden');
+            }
+        }
+    }, optElements);
+    
+    const groupStatus = DOM_Engine.create('div', 'relative', {}, [
+        DOM_Engine.create('label', 'block text-sm font-semibold text-slate-700 mb-1.5', {}, ['Status Kehadiran (Sales)']),
+        selStatus,
+        DOM_Engine.create('i', 'fa-solid fa-chevron-down absolute right-4 top-[42px] text-slate-400 pointer-events-none')
+    ]);
+
+    // [UPDATE] Form Input Customer dan Lokasi (Tersembunyi secara Default)
+    const fCust = DOM_Engine.create('div', '', {}, [
+        DOM_Engine.create('label', 'block text-sm font-semibold text-slate-700 mb-1.5', {}, ['Nama Customer']),
+        DOM_Engine.create('input', 'input-premium w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5', { 
+            type: 'text', id: 'sales-inp-cust', placeholder: 'MAJU BERSAMA',
+            onInput: function() { this.value = this.value.toUpperCase(); },
+            onBlur: function() {
+                let val = this.value.trim();
+                if (val.length > 0 && !val.startsWith('PT. ')) { this.value = 'PT. ' + val.replace(/^PT\.?\s*/i, ''); }
+            }
+        })
+    ]);
+    
+    const fLokasi = DOM_Engine.create('div', '', {}, [
+        DOM_Engine.create('label', 'block text-sm font-semibold text-slate-700 mb-1.5', {}, ['Area / Lokasi Tujuan']),
+        DOM_Engine.create('input', 'input-premium w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5', { 
+            type: 'text', id: 'sales-inp-lokasi', placeholder: 'Contoh: Cikarang',
+            onInput: function() { this.value = this.value.toUpperCase(); }
+        })
+    ]);
+    
+    // Container untuk input tambahan, akan muncul jika VC / ST dipilih.
+    const extraFieldsContainer = DOM_Engine.create('div', 'space-y-5 hidden fade-in mt-5 pt-5 border-t border-slate-100', { id: 'sales-extra-fields' }, [fCust, fLokasi]);
+
+    const gpsBox = DOM_Engine.create('div', 'flex items-center justify-between p-4 bg-slate-50 border border-slate-200 rounded-xl', {}, [
+        DOM_Engine.create('div', 'flex items-center gap-3', {}, [
+            DOM_Engine.create('i', 'fa-solid fa-location-dot text-slate-400 text-lg', {id: 'dinas-icn-gps'}),
+            DOM_Engine.create('span', 'text-sm font-medium text-slate-600', {id: 'dinas-txt-gps'}, ['Mencari GPS...'])
+        ]),
+        DOM_Engine.create('button', 'text-sm bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-sm', { type: 'button', onClick: () => action_getGPS('dinas-txt-gps', 'dinas-icn-gps') }, ['Refresh'])
+    ]);
+
+    const scanBtn = DOM_Engine.create('button', 'w-full flex justify-center gap-2 bg-slate-800 hover:bg-slate-900 transition-colors text-white py-3.5 rounded-xl font-semibold mt-4', { type: 'button', onClick: action_openScanner }, [DOM_Engine.create('i', 'fa-solid fa-qrcode'), ' Buka Scanner (Kamera/File)']);
+    const scanStatus = DOM_Engine.create('p', 'text-xs text-red-500 mt-2 font-medium', {id: 'dinas-txt-barcode'}, ['*Wajib scan barcode pos (POS-SECURITY-FSET-01)']);
+
+    let bypassBtn = null;
+    if (isSuperAdmin) {
+        bypassBtn = DOM_Engine.create('button', 'w-full mt-2 py-2 text-xs font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100', { 
+            type: 'button', 
+            onClick: () => {
+                SysState.dinas.isLocValid = true; SysState.dinas.isBarcodeValid = true; SysState.dinas.kordinat = "BYPASS_ADMIN";
+                document.getElementById('dinas-txt-barcode').className = "text-sm text-amber-600 font-bold mt-2";
+                document.getElementById('dinas-txt-barcode').innerHTML = '<i class="fa-solid fa-crown"></i> Barcode Bypassed';
+                checkEligibility_Berangkat(); sysShowToast("Protokol Bypass Aktif!", "success");
+            } 
+        }, ['[SUPER ADMIN] Bypass Validasi Berangkat']);
+    }
+
+    const btnSubmit = DOM_Engine.create('button', 'btn-primary w-full text-white py-4 rounded-xl font-bold text-lg mt-8 opacity-50 cursor-not-allowed flex justify-center gap-2', { type: 'submit', id: 'dinas-btn-submit', disabled: 'true' }, [DOM_Engine.create('i', 'fa-solid fa-paper-plane'), ' Mulai Absensi Sales']);
+
+    // Cek inisial saat form diload, jika status default (misal VC) muncul, buka kolom ekstra.
+    setTimeout(() => {
+        if(selStatus.value === 'VC' || selStatus.value === 'ST') extraFieldsContainer.classList.remove('hidden');
+    }, 100);
+
+    return DOM_Engine.create('div', 'bg-white p-6 sm:p-8 rounded-3xl shadow-premium fade-in border border-slate-100 border-t-4 border-t-blue-500', {}, [
+        DOM_Engine.create('h2', 'text-2xl font-bold text-slate-800 mb-2', {}, ['Dashboard Absensi Sales']),
+        DOM_Engine.create('p', 'text-sm text-slate-500 mb-6', {}, ['Modul aktivitas khusus untuk tim Sales.']),
+        DOM_Engine.create('form', 'space-y-5', { onSubmit: action_submitDinas_Sales }, [
+            groupStatus, 
+            extraFieldsContainer, // [UPDATE] Kolom Customer & Lokasi
+            DOM_Engine.create('div', 'pt-4 border-t', {}, [DOM_Engine.create('label', 'block text-sm font-semibold mb-1', {}, ['Status GPS']), gpsBox]), 
+            DOM_Engine.create('div', '', {}, [scanBtn, scanStatus, bypassBtn]), 
+            btnSubmit
+        ])
+    ]);
+}
+
+function action_submitDinas_Sales(e) {
+    e.preventDefault();
+    if (!SysState.dinas.isLocValid || !SysState.dinas.isBarcodeValid) return;
+    
+    // [UPDATE] Validasi Manual Ekstra untuk VC dan ST
+    const statusTerpilih = document.getElementById('sales-sel-status').value;
+    let customerValue = "-";
+    let lokasiValue = "-";
+
+    if (statusTerpilih === 'VC' || statusTerpilih === 'ST') {
+        customerValue = document.getElementById('sales-inp-cust').value.trim();
+        lokasiValue = document.getElementById('sales-inp-lokasi').value.trim();
+        if (customerValue === "" || lokasiValue === "") {
+            sysShowToast("Peringatan: Nama Customer dan Lokasi wajib diisi untuk status VC/ST!", "error");
+            return; // Blokir jika kosong
+        }
+    }
+
+    const btn = document.getElementById('dinas-btn-submit');
+    btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Memproses Absensi...'; btn.disabled = true;
+
+    const payload = { 
+      noST: "SALES-ABSENSI", 
+      customer: customerValue, 
+      lokasi: lokasiValue, 
+      kordinat: SysState.dinas.kordinat,
+      statusAbsensi: statusTerpilih 
+    };
+
+    google.script.run
+        .withSuccessHandler((res) => {
+            if(res.status === "success") { 
+                sysShowToast("Absensi Sales Berhasil Tercatat!", "success"); 
+                SysState.dinas.isActive = true; 
+                SysState.dinas.data = res.data; 
+                localStorage.setItem('cepu_dinas_state', JSON.stringify(res.data));
+                renderWorkspace_Dinas(); 
+            } else { sysShowToast(res.message, "error"); btn.innerHTML = 'Mulai Absensi Sales'; btn.disabled = false; }
+        })
+        .api_submitPerjalananDinas(payload, SysState.user);
+}
+
+</script>
