@@ -71,58 +71,90 @@ function api_getInitFormData(user) {
   }
 }
 
+// --- CARI DAN GANTI FUNGSI INI DI BE_Services.gs ---
+
 function api_verifyLogin(nrpp, password, deviceId) {
   try {
     const dbMaster = SpreadsheetApp.openById(DB_MASTER_ID);
     const sheetLogin = dbMaster.getSheetByName("Master_Login");
     const dataLogin = sheetLogin.getDataRange().getValues();
-    
+    const headers = dataLogin[0].map(h => h.toString().toUpperCase().trim());
+
+    const idx = {
+      nrpp: headers.indexOf("NRPP"),
+      pass: headers.indexOf("PASSWORD"),
+      devId: headers.indexOf("DEVICE_ID"),
+      name: headers.indexOf("NAMA"),
+      lastLogin: headers.indexOf("LAST_LOGIN")
+    };
+
+    if (idx.nrpp === -1 || idx.pass === -1) throw new Error("Struktur kolom Master_Login rusak!");
+
     let userFound = false;
-    let rowIndex = -1;
-    let userName = "";
+    let userData = null;
 
     for (let i = 1; i < dataLogin.length; i++) {
-      if (dataLogin[i][0].toString() === nrpp.toString() && dataLogin[i][2].toString() === password.toString()) {
-        let registeredDeviceId = dataLogin[i][3] ? dataLogin[i][3].toString() : "";
-        rowIndex = i + 1; 
+      let row = dataLogin[i];
+      if (row[idx.nrpp].toString() === nrpp.toString() && row[idx.pass].toString() === password.toString()) {
+        
+        let registeredDeviceId = row[idx.devId] ? row[idx.devId].toString() : "";
+        let rowIndex = i + 1;
 
         if (registeredDeviceId === "") {
-          sheetLogin.getRange(rowIndex, 4).setValue(deviceId);
+          sheetLogin.getRange(rowIndex, idx.devId + 1).setValue(deviceId);
         } else if (registeredDeviceId !== deviceId.toString()) {
-          return { status: "error", message: "⛔ SECURITY LOCK: NRPP ini telah ditautkan ke perangkat/HP lain. Dilarang keras titip absen!" };
+          return { status: "error", message: "⛔ SECURITY LOCK: NRPP ini terikat pada perangkat lain!" };
         }
 
         userFound = true;
-        userName = dataLogin[i][1];
-        sheetLogin.getRange(rowIndex, 5).setValue(new Date()); 
+        sheetLogin.getRange(rowIndex, idx.lastLogin + 1).setValue(new Date());
+
+        const sheetKaryawan = dbMaster.getSheetByName("Master_Karyawan");
+        const dataKar = sheetKaryawan.getDataRange().getValues();
+        const headKar = dataKar[0].map(h => h.toString().toUpperCase().trim());
+        
+        const iK = {
+          nrpp: headKar.indexOf("NRPP"),
+          jabatan: headKar.indexOf("JABATAN"),
+          gol: headKar.indexOf("GOLONGAN"),
+          status: headKar.indexOf("STATUS_KARYAWAN"),
+          dept: headKar.indexOf("DEPARTEMEN"),
+          loc: headKar.indexOf("LOKASI")
+        };
+
+        let details = dataKar.find(r => r[iK.nrpp].toString() === nrpp.toString());
+        
+        userData = {
+          nrpp: nrpp,
+          nama: row[idx.name],
+          jabatan: details ? details[iK.jabatan] : "User",
+          golongan: details ? details[iK.gol] : "-",
+          statusKaryawan: details ? details[iK.status] : "-",
+          departemen: details ? details[iK.dept] : "-",
+          lokasi: details ? details[iK.loc] : "OFFICE"
+        };
+
+        // [KILLER FEATURE]: Pengecekan Hak Akses UPD secara otomatis
+        const sheetUPD = dbMaster.getSheetByName("Master_UPD");
+        if (sheetUPD) {
+            const dataUPD = sheetUPD.getDataRange().getValues();
+            let headUPD = dataUPD[0].map(h => h.toString().toUpperCase().trim());
+            let idxJabUPD = headUPD.indexOf("JABATAN");
+            if(idxJabUPD !== -1) {
+                userData.isUpdEligible = dataUPD.some(r => r[idxJabUPD].toString().trim().toUpperCase() === userData.jabatan.toString().trim().toUpperCase());
+            } else {
+                userData.isUpdEligible = false;
+            }
+        }
         break;
       }
     }
 
-    if (!userFound) return { status: "error", message: "Kredensial tidak valid!" };
-
-    const sheetKaryawan = dbMaster.getSheetByName("Master_Karyawan");
-    const dataKaryawan = sheetKaryawan.getDataRange().getValues();
-    let jabatan = "", golongan = "", statusKaryawan = "", departemen = "", lokasi = "";
-
-    for (let i = 1; i < dataKaryawan.length; i++) {
-      if (dataKaryawan[i][0].toString() === nrpp.toString()) {
-        jabatan = dataKaryawan[i][2]; 
-        golongan = dataKaryawan[i][3];
-        statusKaryawan = dataKaryawan[i][4]; // [UPDATE] Mengambil Status Karyawan
-        departemen = dataKaryawan[i][5];
-        lokasi = dataKaryawan[i][6];
-        break;
-      }
-    }
-
-    return {
-      status: "success",
-      data: { nrpp: nrpp, nama: userName, jabatan: jabatan, golongan: golongan, statusKaryawan: statusKaryawan, departemen: departemen, lokasi: lokasi }
-    };
+    if (!userFound) return { status: "error", message: "NRPP atau Password salah!" };
+    return { status: "success", data: userData };
 
   } catch (error) {
-    return { status: "error", message: "Kesalahan Server: " + error.toString() };
+    return { status: "error", message: "System Error: " + error.toString() };
   }
 }
 
@@ -412,5 +444,286 @@ function api_submitPulangDinas(payload, user) {
     };
   } catch (error) {
     return { status: "error", message: error.toString() };
+  }
+}
+
+// ==========================================================
+// MODUL SUPER ADMIN: UNIVERSAL CRUD MASTER DATA
+// ==========================================================
+
+
+function api_adminGetMaster(sheetName) {
+  try {
+    const db = SpreadsheetApp.openById(DB_MASTER_ID);
+    const sheet = db.getSheetByName(sheetName);
+    if (!sheet) throw new Error("Tabel Master '" + sheetName + "' tidak ditemukan!");
+
+    const data = sheet.getDataRange().getValues();
+    if (data.length === 0) return { status: "success", data: { headers: [], rows: [] } };
+
+    // [KILLER BUG FIX]: Memaksa seluruh elemen sel menjadi teks untuk mencegah JSON Serialization Crash dari google.script.run
+    const headers = data[0].map(h => String(h).trim());
+    const rows = data.slice(1).map(row => {
+        return row.map(cell => {
+            if (cell instanceof Date) return Utilities.formatDate(cell, "Asia/Jakarta", "yyyy/MM/dd HH:mm:ss");
+            if (cell === null || cell === undefined) return "";
+            return String(cell); 
+        });
+    });
+
+    return {
+      status: "success",
+      data: { headers: headers, rows: rows } 
+    };
+  } catch(e) { 
+    return { status: "error", message: e.toString() }; 
+  }
+}
+
+function api_adminMutateMaster(action, sheetName, payload, rowIndex) {
+  try {
+    // [DEBUG LOGGING]
+    console.log("=== API MUTATE EXECUTED ===");
+    console.log("Action:", action);
+    console.log("Sheet:", sheetName);
+    console.log("Payload:", payload);
+    console.log("RowIndex:", rowIndex);
+
+    const db = SpreadsheetApp.openById(DB_MASTER_ID);
+    const sheet = db.getSheetByName(sheetName);
+    if (!sheet) throw new Error("Tabel Master '" + sheetName + "' tidak ditemukan!");
+
+    if (action === "CREATE") {
+      sheet.appendRow(payload);
+      
+      // Protokol Auto-Login
+      if (sheetName === "Master_Karyawan") {
+          const loginSheet = db.getSheetByName("Master_Login");
+          if (loginSheet) {
+              loginSheet.appendRow([payload[0], payload[1], payload[0], "", ""]);
+              console.log("Auto-Login Created for NRPP:", payload[0]);
+          } else {
+              console.warn("Sheet Master_Login tidak ditemukan untuk Auto-Login!");
+          }
+      }
+
+      return { status: "success", message: "Entitas baru berhasil direkam ke " + sheetName };
+    } 
+    else if (action === "UPDATE") {
+      const targetRow = parseInt(rowIndex) + 2; 
+      if(isNaN(targetRow)) throw new Error("Target baris tidak valid!");
+      
+      sheet.getRange(targetRow, 1, 1, payload.length).setValues([payload]);
+      return { status: "success", message: "Entitas pada baris " + targetRow + " berhasil diperbarui!" };
+    } 
+    else if (action === "DELETE") {
+      const targetRow = parseInt(rowIndex) + 2;
+      if(isNaN(targetRow)) throw new Error("Target baris tidak valid!");
+      
+      sheet.deleteRow(targetRow);
+      return { status: "success", message: "Entitas berhasil dimusnahkan." };
+    } 
+    else {
+      throw new Error("Protokol Mutasi (CRUD) tidak dikenali: " + action);
+    }
+  } catch(e) { 
+    console.error("Backend Error:", e.toString());
+    return { status: "error", message: e.toString() }; 
+  }
+}
+
+// ==========================================================
+// MODUL SUPER ADMIN: SMART HRIS & LIVE TRACKING
+// ==========================================================
+
+function api_adminGetKaryawanDetails() {
+  try {
+    const db = SpreadsheetApp.openById(DB_MASTER_ID);
+    const karSheet = db.getSheetByName("Master_Karyawan");
+    const logSheet = db.getSheetByName("Master_Login");
+    
+    const karData = karSheet.getDataRange().getValues();
+    const logData = logSheet.getDataRange().getValues();
+
+    // Pemetaan data Login untuk digabungkan dengan Master_Karyawan (Relational Mapping)
+    let logMap = {};
+    for(let i = 1; i < logData.length; i++) {
+        logMap[logData[i][0].toString()] = {
+            deviceId: logData[i][3] ? logData[i][3].toString() : "",
+            lastLogin: logData[i][4] instanceof Date ? Utilities.formatDate(logData[i][4], "Asia/Jakarta", "dd/MM/yyyy HH:mm") : logData[i][4].toString()
+        };
+    }
+
+    let results = [];
+    for(let i = 1; i < karData.length; i++) {
+        let nrpp = karData[i][0].toString();
+        if(!nrpp) continue;
+        results.push({
+            nrpp: nrpp, nama: karData[i][1], jabatan: karData[i][2],
+            golongan: karData[i][3], departemen: karData[i][5], lokasi: karData[i][6],
+            deviceId: logMap[nrpp] ? logMap[nrpp].deviceId : "",
+            lastLogin: logMap[nrpp] ? logMap[nrpp].lastLogin : "Belum Pernah Login"
+        });
+    }
+    return { status: "success", data: results };
+  } catch(e) { return { status: "error", message: e.toString() }; }
+}
+
+function api_adminResetDevice(nrpp) {
+  try {
+    const db = SpreadsheetApp.openById(DB_MASTER_ID);
+    const sheet = db.getSheetByName("Master_Login");
+    const data = sheet.getDataRange().getValues();
+    
+    for (let i = 1; i < data.length; i++) {
+        if (data[i][0].toString() === nrpp.toString()) {
+            sheet.getRange(i + 1, 4).setValue(""); // Kolom ke-4 adalah Device_ID
+            return { status: "success", message: "Security Lock untuk NRPP " + nrpp + " berhasil dihancurkan!" };
+        }
+    }
+    throw new Error("Data Kredensial tidak ditemukan!");
+  } catch(e) { return { status: "error", message: e.toString() }; }
+}
+
+function api_adminGetLiveLogs() {
+  try {
+    const timestamp = new Date();
+    const todayWIB = Utilities.formatDate(timestamp, "Asia/Jakarta", "yyyy/MM/dd");
+    let liveData = [];
+
+    // Fungsi Scraper Internal untuk mengekstrak multi-sheet
+    function extractLogs(dbId, isSales) {
+      const db = SpreadsheetApp.openById(dbId);
+      const sheets = db.getSheets();
+      
+      sheets.forEach(sheet => {
+        const sheetName = sheet.getName();
+        if(!sheetName.startsWith("Log_")) return; 
+        
+        const data = sheet.getDataRange().getValues();
+        if(data.length > 1) {
+          let timeIndex = isSales ? 10 : 11;
+          for(let i = data.length - 1; i >= 1; i--) { 
+            let wKeluar = data[i][timeIndex];
+            if (!wKeluar) continue;
+            
+            let wKeluarDate = (wKeluar instanceof Date) ? wKeluar : new Date(wKeluar.toString() + " +0700");
+            if (isNaN(wKeluarDate.getTime())) continue;
+            
+            let wKeluarStr = Utilities.formatDate(wKeluarDate, "Asia/Jakarta", "yyyy/MM/dd");
+            
+            if(wKeluarStr === todayWIB) {
+              liveData.push({
+                nrpp: data[i][1], nama: data[i][2],
+                divisi: isSales ? "SALES" : "OPS (" + data[i][7] + ")",
+                customer: isSales ? data[i][8] : data[i][9],
+                waktuKeluar: Utilities.formatDate(wKeluarDate, "Asia/Jakarta", "HH:mm"),
+                status: isSales ? (data[i][15] || "SEDANG JALAN") : (data[i][17] || "SEDANG JALAN")
+              });
+            }
+          }
+        }
+      });
+    }
+    
+    extractLogs(DB_UPD_ID, false);
+    extractLogs(DB_SALES_ID, true);
+
+    return { status: "success", data: liveData };
+  } catch(e) { return { status: "error", message: e.toString() }; }
+}
+
+// ==========================================================
+// MODUL SUPER ADMIN: REKAPITULASI & EKSPOR DATA
+// ==========================================================
+
+function api_adminGetRekapSheets() {
+  try {
+    const db = SpreadsheetApp.openById(DB_REKAP_ID);
+    const sheets = db.getSheets();
+    // Tarik semua nama Sheet yang ada di dalam DB_REKAP
+    const sheetNames = sheets.map(s => s.getName());
+    return { status: "success", data: sheetNames };
+  } catch(e) {
+    return { status: "error", message: e.toString() };
+  }
+}
+
+function api_adminGetRekapData(sheetName) {
+  try {
+    const db = SpreadsheetApp.openById(DB_REKAP_ID);
+    const sheet = db.getSheetByName(sheetName);
+    if(!sheet) throw new Error("Sheet Rekap '" + sheetName + "' tidak ditemukan!");
+    
+    // [KILLER FEATURE]: Menggunakan getDisplayValues() alih-alih getValues(). 
+    // Ini memaksa Google Sheets mengirim data persis seperti yang Anda lihat di layar (Teks),
+    // mencegah kerusakan format jam (-13.99) atau Date Object Object saat diekspor.
+    const data = sheet.getDataRange().getDisplayValues(); 
+    
+    return { status: "success", data: data, sheetName: sheetName };
+  } catch(e) {
+    return { status: "error", message: e.toString() };
+  }
+}
+
+// ==========================================================
+// MODUL USER: RIWAYAT PERJALANAN DINAS & UPD (GROUPING ST)
+// ==========================================================
+
+// --- CARI DAN GANTI FUNGSI INI DI BE_Services.gs ---
+
+function api_getLogPribadi(user) {
+  try {
+    const dbUpd = SpreadsheetApp.openById(DB_UPD_ID);
+    let targetSheetName = "Log_" + user.lokasi.trim();
+    let sheet = dbUpd.getSheetByName(targetSheetName);
+    if(!sheet) return { status: "success", data: {} }; 
+
+    const data = sheet.getDataRange().getValues();
+    if(data.length <= 1) return { status: "success", data: {} };
+
+    const headers = data[0].map(h => h.toString().toUpperCase().trim());
+    const iNoST = headers.indexOf("NO_ST");
+    const iCust = headers.indexOf("CUSTOMER");
+    const iLokasi = headers.indexOf("LOKASI"); // [UPDATE] Kolom Lokasi
+    const iWaktuKeluar = headers.indexOf("WAKTU_KELUAR") !== -1 ? headers.indexOf("WAKTU_KELUAR") : headers.indexOf("WAKTU KELUAR");
+    const iWaktuMasuk = headers.indexOf("WAKTU_MASUK") !== -1 ? headers.indexOf("WAKTU_MASUK") : headers.indexOf("WAKTU MASUK"); // [UPDATE] Kolom Waktu Masuk
+    const iDurasi = headers.indexOf("DURASI_JAM") !== -1 ? headers.indexOf("DURASI_JAM") : headers.indexOf("DURASI JAM");
+    const iNominal = headers.indexOf("NOMINAL_UPD") !== -1 ? headers.indexOf("NOMINAL_UPD") : headers.indexOf("NOMINAL UPD");
+    const iStatus = headers.indexOf("STATUS_PERJALANAN") !== -1 ? headers.indexOf("STATUS_PERJALANAN") : headers.indexOf("STATUS PERJALANAN");
+    const iKlaim = headers.indexOf("STATUS_KLAIM") !== -1 ? headers.indexOf("STATUS_KLAIM") : headers.indexOf("STATUS KLAIM");
+
+    let groupedData = {};
+
+    for(let i = data.length - 1; i >= 1; i--) {
+       if(data[i][1].toString() === user.nrpp.toString()) {
+           let st = (iNoST !== -1 && data[i][iNoST]) ? data[i][iNoST].toString().trim() : "TANPA ST";
+           if(!st) st = "TANPA ST";
+           
+           if(!groupedData[st]) groupedData[st] = [];
+           
+           let wKeluar = (iWaktuKeluar !== -1) ? data[i][iWaktuKeluar] : "";
+           let wKeluarStr = (wKeluar instanceof Date) ? Utilities.formatDate(wKeluar, "Asia/Jakarta", "dd/MM/yyyy HH:mm") : wKeluar.toString();
+           
+           // [UPDATE] Parsing Waktu Masuk
+           let wMasuk = (iWaktuMasuk !== -1 && data[i][iWaktuMasuk]) ? data[i][iWaktuMasuk] : "";
+           let wMasukStr = (wMasuk instanceof Date) ? Utilities.formatDate(wMasuk, "Asia/Jakarta", "dd/MM/yyyy HH:mm") : (wMasuk ? wMasuk.toString() : "-");
+
+           groupedData[st].push({
+               customer: (iCust !== -1 && data[i][iCust]) ? data[i][iCust].toString() : "-",
+               lokasi: (iLokasi !== -1 && data[i][iLokasi]) ? data[i][iLokasi].toString() : "-",
+               waktuKeluar: wKeluarStr,
+               waktuMasuk: wMasukStr,
+               durasi: (iDurasi !== -1 && data[i][iDurasi]) ? parseFloat(data[i][iDurasi]).toFixed(2) : "0.00",
+               nominal: (iNominal !== -1 && data[i][iNominal]) ? parseFloat(data[i][iNominal]) : 0,
+               status: (iStatus !== -1 && data[i][iStatus]) ? data[i][iStatus].toString() : "SEDANG JALAN",
+               klaim: (iKlaim !== -1 && data[i][iKlaim]) ? data[i][iKlaim].toString() : "BELUM KLAIM"
+           });
+       }
+    }
+
+    return { status: "success", data: groupedData };
+  } catch(e) {
+    return { status: "error", message: e.toString() };
   }
 }
