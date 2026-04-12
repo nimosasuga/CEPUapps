@@ -1685,20 +1685,20 @@ function execute_downloadDeklarasiPDF(stNumber, logs) {
     });
 }
 
-function action_printDeklarasi(stNumber, logs) {
+  function action_printDeklarasi(stNumber, logs) {
     sysShowToast("Mengkompilasi data... Menyiapkan mesin PDF.", "info");
 
     // [KILLER FEATURE]: Lazy-Load html2pdf.js secara On-The-Fly (Hemat Memori)
     if (typeof html2pdf === 'undefined') {
         const script = document.createElement('script');
-        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+        script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
         script.onload = () => execute_downloadPDF(stNumber, logs);
         document.head.appendChild(script);
     } else {
         // Eksekusi langsung jika library sudah tersimpan di cache browser
         execute_downloadPDF(stNumber, logs);
     }
-}
+  }
 
 function execute_downloadPDF(stNumber, logs) {
     sysShowToast("Mengekspor ke format PDF...", "info");
