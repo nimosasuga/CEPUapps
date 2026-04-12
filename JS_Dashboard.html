@@ -34,6 +34,15 @@ const overlay = DOM_Engine.create('div', 'fixed inset-0 bg-slate-900/40 backdrop
             DOM_Engine.create('i', 'fa-solid fa-folder-open text-lg w-6 text-center text-slate-400 group-hover:text-indigo-500 transition-colors'),
             DOM_Engine.create('span', 'tracking-wide', {}, ['Log Perjalanan (UPD)'])
         ]));
+
+        // [MENU BARU]: Cetak Deklarasi
+        menuItems.push(DOM_Engine.create('div', 'sys-menu-item flex items-center gap-4 px-6 py-3.5 mx-4 rounded-2xl font-semibold text-slate-600 hover:bg-purple-50 hover:text-purple-600 cursor-pointer mt-2 transition-all group border border-transparent hover:border-purple-100', { 
+            id: 'menu-cetak-deklarasi', 
+            onClick: () => sysNavigateTo(renderWorkspace_CetakDeklarasi, 'menu-cetak-deklarasi') 
+        }, [
+            DOM_Engine.create('i', 'fa-solid fa-print text-lg w-6 text-center text-slate-400 group-hover:text-purple-500 transition-colors'),
+            DOM_Engine.create('span', 'tracking-wide', {}, ['Cetak Deklarasi'])
+        ]));
     }
 
     if (isSuperAdmin) {
@@ -1390,18 +1399,35 @@ function buildUI_LogPribadi(groupedData) {
     container.appendChild(DOM_Engine.create('div', 'bg-slate-50 min-h-screen p-2', {}, [headerSec, DOM_Engine.create('div', '', {}, accordions)]));
 }
 
+// --- WORKSPACE CETAK DEKLARASI ---
+function renderWorkspace_CetakDeklarasi() {
+    DOM_Engine.clear('nav-workspace');
+    const container = document.getElementById('nav-workspace');
+    
+    container.appendChild(DOM_Engine.create('div', 'flex flex-col items-center justify-center py-20 fade-in', {}, [
+        DOM_Engine.create('i', 'fa-solid fa-file-contract fa-spin text-4xl text-purple-500 mb-4'),
+        DOM_Engine.create('p', 'text-slate-500 font-medium tracking-wide', {}, ['Memuat data form deklarasi perjalanan...'])
+    ]));
 
+    // Re-use API yang sama untuk mengambil Log Pribadi (Kompilasi Grup ST)
+    google.script.run.withSuccessHandler((res) => {
+        if (res.status === 'success') buildUI_CetakDeklarasi(res.data);
+        else { sysShowToast(res.message, 'error'); renderWorkspace_Dinas(); }
+    }).api_getLogPribadi(SysState.user);
+}
+
+// --- UI DASHBOARD CETAK DEKLARASI ---
 function buildUI_CetakDeklarasi(groupedData) {
     DOM_Engine.clear('nav-workspace');
     const container = document.getElementById('nav-workspace');
 
-    const headerSec = DOM_Engine.create('div', 'mb-8 fade-in flex items-end justify-between', {}, [
+    const headerSec = DOM_Engine.create('div', 'mb-8 fade-in flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4', {}, [
         DOM_Engine.create('div', '', {}, [
             DOM_Engine.create('h2', 'text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-3', {}, [
                 DOM_Engine.create('div', 'p-2 bg-purple-100 rounded-xl', {}, [DOM_Engine.create('i', 'fa-solid fa-print text-purple-600')]),
-                'Cetak Deklarasi (Epicor)'
+                'Cetak Deklarasi Dinas'
             ]),
-            DOM_Engine.create('p', 'text-slate-500 text-sm mt-2 ml-14', {}, ['Pilih Nomor Surat Tugas (ST) untuk dicetak sebagai lampiran klaim.'])
+            DOM_Engine.create('p', 'text-slate-500 text-sm mt-2 ml-14', {}, ['Ekspor form deklarasi resmi untuk klaim perjalanan per Nomor Surat Tugas.'])
         ]),
         DOM_Engine.create('button', 'bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 px-4 py-2 rounded-xl font-bold text-sm shadow-sm flex items-center gap-2 transition-all', { onClick: renderWorkspace_CetakDeklarasi }, [DOM_Engine.create('i', 'fa-solid fa-rotate-right'), 'Refresh'])
     ]);
@@ -1419,34 +1445,242 @@ function buildUI_CetakDeklarasi(groupedData) {
         const logs = groupedData[st];
         let isComplete = logs.every(l => l.status.toUpperCase() === "SELESAI");
 
-        return DOM_Engine.create('div', 'glass p-6 rounded-[1.5rem] shadow-premium hover:shadow-2xl transition-all border border-purple-100 flex items-center justify-between group fade-in-up', {}, [
+        return DOM_Engine.create('div', 'glass p-6 rounded-[1.5rem] shadow-premium hover:shadow-2xl transition-all border border-purple-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 group fade-in-up', {}, [
             DOM_Engine.create('div', 'flex items-center gap-5', {}, [
-                DOM_Engine.create('div', 'w-14 h-14 bg-gradient-to-br from-purple-500 to-indigo-600 text-white rounded-2xl flex items-center justify-center text-2xl shadow-lg', {}, [DOM_Engine.create('i', 'fa-solid fa-file-contract')]),
-                DOM_Engine.create('div', '', {}, [
-                    DOM_Engine.create('h3', 'text-xl font-extrabold text-slate-800 tracking-wider', {}, [st]),
+                DOM_Engine.create('div', 'w-14 h-14 flex-shrink-0 bg-gradient-to-br from-purple-500 to-indigo-600 text-white rounded-2xl flex items-center justify-center text-2xl shadow-lg', {}, [DOM_Engine.create('i', 'fa-solid fa-file-invoice')]),
+                DOM_Engine.create('div', 'overflow-hidden', {}, [
+                    DOM_Engine.create('h3', 'text-xl font-extrabold text-slate-800 tracking-wider truncate', {}, [st]),
                     DOM_Engine.create('p', 'text-xs font-bold text-slate-500 uppercase mt-0.5', {}, [logs.length + ' Titik Kunjungan | Status: ', 
                         DOM_Engine.create('span', isComplete ? 'text-emerald-500' : 'text-amber-500', {}, [isComplete ? 'TUNTAS' : 'SEBAGIAN JALAN'])
                     ])
                 ])
             ]),
-            DOM_Engine.create('button', 'px-6 py-3 bg-slate-900 hover:bg-purple-600 text-white rounded-xl font-bold text-sm shadow-md transition-all hover:-translate-y-1 flex items-center gap-2', {
-                onClick: () => action_printDeklarasi(st, logs)
-            }, [DOM_Engine.create('i', 'fa-solid fa-print'), 'Cetak PDF'])
+            DOM_Engine.create('button', 'w-full sm:w-auto px-6 py-3 bg-slate-900 hover:bg-purple-600 text-white rounded-xl font-bold text-sm shadow-md transition-all hover:-translate-y-1 flex items-center justify-center gap-2', {
+                onClick: () => action_downloadDeklarasi(st, logs) // Memanggil Mesin Deklarasi Baru
+            }, [DOM_Engine.create('i', 'fa-solid fa-file-pdf'), 'Unduh Form'])
         ]);
     });
 
-    const grid = DOM_Engine.create('div', 'grid grid-cols-1 md:grid-cols-2 gap-5', {}, cards);
+    const grid = DOM_Engine.create('div', 'grid grid-cols-1 lg:grid-cols-2 gap-5', {}, cards);
     container.appendChild(DOM_Engine.create('div', 'bg-slate-50 min-h-screen p-2', {}, [headerSec, grid]));
 }
 
-function action_printDeklarasi(stNumber, logs) {
-    sysShowToast("Menyiapkan dokumen cetak...", "info");
+// --- MESIN KOMPILASI TEMPLATE DEKLARASI ---
+function action_downloadDeklarasi(stNumber, logs) {
+    sysShowToast("Mempersiapkan Form Deklarasi...", "info");
 
-    const tglCetak = new Date().toLocaleString('id-ID');
+    if (typeof html2pdf === 'undefined') {
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+        script.onload = () => execute_downloadDeklarasiPDF(stNumber, logs);
+        document.head.appendChild(script);
+    } else {
+        execute_downloadDeklarasiPDF(stNumber, logs);
+    }
+}
+
+function execute_downloadDeklarasiPDF(stNumber, logs) {
+    sysShowToast("Mengunduh Form Deklarasi...", "info");
+
+    // Ekstraksi Data Spesifik dari log
+    let berangkat = logs.length > 0 ? logs[0].waktuKeluar : '-';
+    let kembali = logs.length > 0 ? logs[logs.length-1].waktuMasuk : '-';
+    let customer = logs.length > 0 ? logs[0].customer : '-';
+    let lokasi = logs.length > 0 ? logs[0].lokasi : '-';
+
+    let tripsHtml = '';
+    let grandTotal = 0;
+    let totalBaris = logs.length;
+    let batasBarisTetap = 10;
+
+    for (let i = 0; i < totalBaris; i++) {
+        let nominal = parseFloat(logs[i].nominal) || 0;
+        grandTotal += nominal;
+        
+        let tglOnly = logs[i].waktuKeluar ? logs[i].waktuKeluar.split(' ')[0] : '-';
+        let nominalFormatted = nominal > 0 ? nominal.toLocaleString('id-ID') : '0';
+
+        tripsHtml += `
+        <tr>
+          <td class="text-left">${tglOnly}</td>
+          <td class="text-left">${logs[i].lokasi}</td>
+          <td></td>
+          <td></td>
+          <td class="text-right">${nominalFormatted}</td>
+          <td class="text-right"></td>
+          <td class="text-right"></td>
+          <td class="text-right"></td>
+          <td class="text-right"></td>
+          <td></td>
+          <td class="text-right"></td>
+          <td class="text-right">${nominalFormatted}</td>
+        </tr>`;
+    }
+
+    // Pembuatan Baris Kosong agar layout presisi dengan template
+    for (let j = totalBaris; j < batasBarisTetap; j++) {
+        tripsHtml += `<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>`;
+    }
+
+    const pdfContainer = document.createElement('div');
+    pdfContainer.style.fontFamily = 'Arial, sans-serif';
+    pdfContainer.style.fontSize = '8pt';
+    pdfContainer.style.color = '#000';
+    pdfContainer.style.backgroundColor = '#fff';
+
+    // [INJEKSI TEMPLATE MURNI]
+    pdfContainer.innerHTML = `
+      <style>
+        .judul { text-align: center; font-size: 11pt; font-weight: bold; margin-bottom: 8px; margin-top: 5px; color: #000; }
+        table { width: 100%; border-collapse: collapse; page-break-inside: avoid; color: #000; }
+        .table-kop { margin-bottom: 8px; }
+        .table-kop td { border: 1px solid #000; padding: 2px 4px; height: 16px; vertical-align: middle; white-space: nowrap; font-size: 8pt; }
+        .table-data td, .table-data th { border: 1px solid #000; padding: 2px 4px; height: 16px; vertical-align: middle; font-size: 8pt; }
+        .table-data th { text-align: center; font-weight: normal; }
+        .table-ttd { width: 60%; margin-top: 5px; font-size: 8pt; }
+        .table-ttd th, .table-ttd td { border: 1px solid #000; padding: 2px; text-align: center; vertical-align: top; }
+        .table-ttd th { font-weight: normal; }
+        .text-center { text-align: center; } .text-right { text-align: right; } .text-left { text-align: left; }
+      </style>
+
+      <div class="judul">LAPORAN DEKLARASI PERJALANAN DINAS</div>
+
+      <table class="table-kop">
+        <tr>
+          <td style="width: 14%">No. Surat Tugas</td><td style="width: 20%">: ${stNumber}</td>
+          <td style="width: 14%">NAMA</td><td style="width: 15%">: ${SysState.user.nama}</td>
+          <td style="width: 14%">Tgl / Jam Berangkat</td><td style="width: 8%">: ${berangkat}</td>
+          <td style="width: 15%">Cabang / Site / Customer</td><td style="width: 10%">: ${customer}</td>
+        </tr>
+        <tr>
+          <td>No. Work Order</td><td>:</td>
+          <td>Dept / Cost Center</td><td>: ${SysState.user.departemen}</td>
+          <td>Tgl / Jam Kembali</td><td>: ${kembali}</td>
+          <td>Lokasi</td><td>: ${lokasi}</td>
+        </tr>
+        <tr>
+          <td>No. SR</td><td>:</td>
+          <td>Jabatan / Golongan</td><td>: ${SysState.user.jabatan} / ${SysState.user.golongan}</td>
+          <td>Tiket Pesawat</td><td>: Beli Sendiri / Kantor **)</td>
+          <td>No. Polisi / Kendaraan*)</td><td>: -</td>
+        </tr>
+        <tr>
+          <td>No. Invoice</td><td>:</td>
+          <td>No. Dokumen</td><td>:</td>
+          <td>Radius / Jam</td><td>:</td>
+          <td></td><td></td>
+        </tr>
+        <tr>
+          <td>Uraian Pekerjaan</td><td colspan="3">: PM/INSTALL PART/TROUBLESHOOTING</td>
+          <td>Keterangan</td><td colspan="3">: Waranty / Non Waranty / Visit / Lain2**)</td>
+        </tr>
+      </table>
+
+      <table class="table-data">
+        <thead>
+          <tr>
+            <th rowspan="2" style="width: 14%">Tanggal</th>
+            <th rowspan="2" style="width: 15%">Keterangan</th>
+            <th rowspan="2" style="width: 7%">Transport*)</th>
+            <th rowspan="2" style="width: 6%">Hotel</th>
+            <th rowspan="2" style="width: 7%">UPD / TLM</th>
+            <th colspan="4" style="width: 22%">Makan</th>
+            <th rowspan="2" style="width: 7%">Entertain</th>
+            <th rowspan="2" style="width: 10%">Lain-Lain</th>
+            <th rowspan="2" style="width: 12%">Total<br />Seluruh</th>
+          </tr>
+          <tr>
+            <th style="width: 5%">Pagi</th><th style="width: 5%">Siang</th><th style="width: 6%">Malam</th><th style="width: 6%">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${tripsHtml}
+          <tr>
+            <td colspan="9" rowspan="3" style="border: none; border-top: 1px solid #000; text-align: left; vertical-align: top; padding-top: 6px">
+              NOTE :<br />
+              *) Dilampirkan dengan formulir pengeluaran untuk kendaraan (bila menggunakan kendaraan kantor)<br />
+              **) Coret yang tidak perlu
+            </td>
+            <td colspan="2" class="text-left" style="border: 1px solid #000">Total</td>
+            <td class="text-right" style="border: 1px solid #000">${grandTotal.toLocaleString('id-ID')}</td>
+          </tr>
+          <tr>
+            <td colspan="2" class="text-left" style="border: 1px solid #000">Uang Muka / Advance No.&nbsp;&nbsp;&nbsp;${stNumber}</td>
+            <td class="text-right" style="border: 1px solid #000">0</td>
+          </tr>
+          <tr>
+            <td colspan="2" class="text-left" style="border: 1px solid #000">Kekurangan / Kelebihan**)</td>
+            <td class="text-right" style="border: 1px solid #000">-${grandTotal.toLocaleString('id-ID')}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <table class="table-ttd">
+        <tr>
+          <th rowspan="2" style="width: 25%; vertical-align: middle">Disusun oleh,</th>
+          <th colspan="2">Diperiksa Oleh,</th>
+          <th rowspan="2" style="width: 25%; vertical-align: middle">Disetujui Finance Dept</th>
+        </tr>
+        <tr>
+          <th style="width: 25%">Dept./Div.Head/Director</th>
+          <th style="width: 25%">HRGA Div</th>
+        </tr>
+        <tr>
+          <td style="height: 50px; vertical-align: bottom">${SysState.user.nama}</td>
+          <td style="height: 50px"></td>
+          <td style="height: 50px"></td>
+          <td style="height: 50px"></td>
+        </tr>
+      </table>
+    `;
+
+    const prefixName = `CEPU_Deklarasi_ST_${stNumber}_NRPP_${SysState.user.nrpp}`;
+    
+    // [MARGINS PDF KILLER CONFIGURATION] (Top, Right, Bottom, Left dalam Inch)
+    // Sesuai konversi CSS: Top 1.228cm, Right 0.5cm, Bottom 3.916cm, Left 0.5cm
+    const opt = {
+        margin:       [0.48, 0.2, 1.54, 0.2], 
+        filename:     `${prefixName}.pdf`,
+        image:        { type: 'jpeg', quality: 1 },
+        html2canvas:  { scale: 2, useCORS: true },
+        jsPDF:        { unit: 'in', format: 'a4', orientation: 'landscape' }
+    };
+
+    html2pdf().set(opt).from(pdfContainer).save().then(() => {
+        sysShowToast("Deklarasi PDF berhasil diunduh!", "success");
+    }).catch(err => {
+        console.error("PDF Export Error:", err);
+        sysShowToast("Gagal mengkompilasi PDF.", "error");
+    });
+}
+
+function action_printDeklarasi(stNumber, logs) {
+    sysShowToast("Mengkompilasi data... Menyiapkan mesin PDF.", "info");
+
+    // [KILLER FEATURE]: Lazy-Load html2pdf.js secara On-The-Fly (Hemat Memori)
+    if (typeof html2pdf === 'undefined') {
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+        script.onload = () => execute_downloadPDF(stNumber, logs);
+        document.head.appendChild(script);
+    } else {
+        // Eksekusi langsung jika library sudah tersimpan di cache browser
+        execute_downloadPDF(stNumber, logs);
+    }
+}
+
+function execute_downloadPDF(stNumber, logs) {
+    sysShowToast("Mengekspor ke format PDF...", "info");
+    
+    // [UPDATE FORMAT WAKTU]: Standardisasi format DD/MM/YYYY HH:MM WIB
+    const now = new Date();
+    const tglCetak = now.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + 
+                     now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
+                     
     let rowsHtml = '';
     
     if (logs.length === 0) {
-        rowsHtml = '<tr><td colspan="7" style="padding: 20px; color: #888;">Tidak ada data log perjalanan untuk ST ini.</td></tr>';
+        rowsHtml = '<tr><td colspan="7" style="padding: 30px; color: #94a3b8; text-align: center; font-style: italic;">Tidak ada riwayat perjalanan terdeteksi untuk ST ini.</td></tr>';
     } else {
         logs.forEach(log => {
             let valClass = "badge-pen";
@@ -1458,97 +1692,132 @@ function action_printDeklarasi(stNumber, logs) {
 
             rowsHtml += `
             <tr>
-              <td>${log.waktuKeluar}</td>
-              <td>${log.waktuMasuk}</td>
-              <td class="text-left">${log.customer} <br><span style="color:#666; font-size:8pt;">${log.lokasi}</span></td>
-              <td>${log.durasi} Jam</td>
-              <td class="text-right"><strong>Rp ${log.nominal.toLocaleString('id-ID')}</strong></td>
-              <td>${log.status}</td>
-              <td class="${valClass}">${valText}</td>
+              <td style="color: #475569; font-weight: 500;">${log.waktuKeluar}</td>
+              <td style="color: #475569; font-weight: 500;">${log.waktuMasuk}</td>
+              <td class="text-left"><strong style="color: #1e293b; display: block; margin-bottom: 2px;">${log.customer}</strong><span style="color:#64748b; font-size:7.5pt;">${log.lokasi}</span></td>
+              <td style="color: #334155; font-weight: 600;">${log.durasi} <span style="font-size: 7pt; color:#94a3b8;">Jam</span></td>
+              <td class="text-right"><strong style="color: #0f172a;">Rp ${log.nominal.toLocaleString('id-ID')}</strong></td>
+              <td><span class="status-trip">${log.status}</span></td>
+              <td><span class="${valClass}">${valText}</span></td>
             </tr>`;
         });
     }
 
-    // [UPDATE KILLER FEATURE]: Menambahkan Standard Enterprise Prefix Naming
     const prefixName = `CEPU_Log_Perjalanan_ST_${stNumber}_NRPP_${SysState.user.nrpp}`;
 
-    const htmlTemplate = `
-    <!doctype html>
-    <html lang="id">
-    <head>
-      <meta charset="UTF-8">
-      <title>${prefixName}</title>
+    // Membangun Virtual DOM Container untuk PDF Rendering
+    const pdfContainer = document.createElement('div');
+    pdfContainer.style.padding = '30px 40px'; // Spasi putih profesional
+    pdfContainer.style.fontFamily = "'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif";
+    pdfContainer.style.backgroundColor = "#ffffff";
+    
+    // [KILLER UI UPDATE]: Professional Clean Corporate Style
+    pdfContainer.innerHTML = `
       <style>
-        @page { size: A4 landscape; margin: 1.5cm; }
-        body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 9pt; color: #333; margin: 0; padding: 0; }
-        .kop-perusahaan { font-size: 16pt; font-weight: 900; color: #000; letter-spacing: 1px; }
-        .header-title { font-size: 12pt; font-weight: bold; text-transform: uppercase; color: #555; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 20px; }
-        .info-table { width: 100%; margin-bottom: 20px; font-size: 10pt; }
-        .info-table td { padding: 4px 0; }
-        .data-table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
-        .data-table th, .data-table td { border: 1px solid #000; padding: 8px 6px; text-align: center; vertical-align: middle; }
-        .data-table th { background-color: #f0f0f0; font-weight: bold; color: #000; text-transform: uppercase; font-size: 8.5pt; }
+        .kop-perusahaan { font-size: 18pt; font-weight: 900; color: #0f172a; letter-spacing: 0.5px; margin-bottom: 4px; }
+        .tagline { font-size: 8.5pt; font-weight: 600; color: #64748b; letter-spacing: 1.5px; text-transform: uppercase; }
+        .header-title { font-size: 13pt; font-weight: 800; text-transform: uppercase; color: #1e293b; text-align: center; margin: 35px 0 25px 0; letter-spacing: 1px; }
+        
+        .info-table { width: 100%; margin-bottom: 25px; font-size: 9.5pt; color: #334155; }
+        .info-table td { padding: 8px 4px; border-bottom: 1px dashed #cbd5e1; }
+        .info-table td:nth-child(even) { color: #0f172a; font-weight: 600; }
+        
+        .data-table { width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 30px; font-size: 8.5pt; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; }
+        .data-table th, .data-table td { border-bottom: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; padding: 12px 10px; text-align: center; vertical-align: middle; }
+        .data-table th:last-child, .data-table td:last-child { border-right: none; }
+        .data-table tr:last-child td { border-bottom: none; }
+        .data-table th { background-color: #f8fafc; font-weight: 700; text-transform: uppercase; font-size: 7.5pt; color: #64748b; letter-spacing: 0.5px; }
+        .data-table tbody tr:nth-child(even) { background-color: #fcfcfd; }
+        
         .text-left { text-align: left !important; } .text-right { text-align: right !important; }
-        .badge-app { color: #155724; font-weight: bold; } .badge-pen { color: #856404; font-weight: bold; } .badge-adj { color: #0c5460; font-weight: bold; }
-        .footer-container { width: 100%; margin-top: 40px; page-break-inside: avoid; }
+        
+        /* Premium Badges */
+        .badge-app { color: #059669; font-weight: 700; background: #ecfdf5; padding: 4px 8px; border-radius: 6px; font-size: 7.5pt; letter-spacing: 0.5px;} 
+        .badge-pen { color: #d97706; font-weight: 700; background: #fffbeb; padding: 4px 8px; border-radius: 6px; font-size: 7.5pt; letter-spacing: 0.5px;} 
+        .badge-adj { color: #0284c7; font-weight: 700; background: #f0f9ff; padding: 4px 8px; border-radius: 6px; font-size: 7.5pt; letter-spacing: 0.5px;}
+        .status-trip { color: #475569; font-weight: 700; background: #f1f5f9; padding: 4px 8px; border-radius: 6px; font-size: 7.5pt;}
+        
+        .footer-container { width: 100%; margin-top: 50px; page-break-inside: avoid; color: #475569; }
         .ttd-box { width: 30%; text-align: center; float: left; }
-        .ttd-title { font-weight: bold; margin-bottom: 60px; } .ttd-name { font-weight: bold; text-decoration: underline; }
-        .disclaimer-box { width: 65%; float: right; text-align: right; font-size: 8.5pt; color: #555; font-style: italic; margin-top: 30px; }
+        .ttd-title { font-weight: 600; margin-bottom: 70px; font-size: 9pt; color: #64748b; } 
+        .ttd-name { font-weight: 800; text-decoration: underline; color: #0f172a; font-size: 10pt; }
+        .disclaimer-box { width: 60%; float: right; text-align: right; font-size: 7.5pt; color: #64748b; font-style: italic; margin-top: 30px; line-height: 1.6; border-left: 3px solid #cbd5e1; padding-left: 15px; }
         .clear { clear: both; }
       </style>
-    </head>
-    <body onload="window.print(); setTimeout(function(){ window.close(); }, 500);">
-      <table style="width: 100%; margin-bottom: 10px;">
+      
+      <table style="width: 100%; border-bottom: 3px solid #0f172a; padding-bottom: 12px; margin-bottom: 10px;">
         <tr>
-          <td class="kop-perusahaan">PROBASE SYSTEM</td>
-          <td style="text-align: right; font-size: 9pt;">Form: PROBASE-LOG-02<br>Rev: 01</td>
+          <td>
+            <div class="kop-perusahaan">C.E.P.U ENTERPRISE</div>
+            <div class="tagline">Catatan Evaluasi Pekerja Utama</div>
+          </td>
+          <td style="text-align: right; font-size: 8.5pt; color: #64748b; font-weight: 600; vertical-align: bottom;">
+            Form ID: <span style="color: #0f172a;">CEPU-LOG-01</span><br>
+            Divisi: Operasional Internal
+          </td>
         </tr>
       </table>
-      <div class="header-title">LAMPIRAN BUKTI PERJALANAN DINAS</div>
+      
+      <div class="header-title">Dokumen Validasi Perjalanan Dinas</div>
+      
       <table class="info-table">
         <tr>
-          <td style="width: 15%;"><strong>Nama Karyawan</strong></td><td style="width: 45%;">: ${SysState.user.nama}</td>
-          <td style="width: 15%;"><strong>Nomor ST</strong></td><td style="width: 25%;">: <strong>${stNumber}</strong></td>
+          <td style="width: 15%; color: #64748b;">Nama Personel</td><td style="width: 45%;">${SysState.user.nama}</td>
+          <td style="width: 15%; color: #64748b;">Nomor ST</td><td style="width: 25%; font-size: 10.5pt; color: #2563eb;">${stNumber}</td>
         </tr>
         <tr>
-          <td><strong>NRPP</strong></td><td>: ${SysState.user.nrpp}</td>
-          <td><strong>Waktu Cetak</strong></td><td>: ${tglCetak}</td>
+          <td style="color: #64748b;">NRPP</td><td>${SysState.user.nrpp}</td>
+          <td style="color: #64748b;">Waktu Ekspor</td><td>${tglCetak}</td>
         </tr>
       </table>
+      
       <table class="data-table">
         <thead>
           <tr>
-            <th style="width: 12%;">Waktu Keluar</th><th style="width: 12%;">Waktu Masuk</th>
-            <th style="width: 26%;">Customer & Lokasi</th><th style="width: 10%;">Durasi</th>
-            <th style="width: 15%;">Total UPD</th><th style="width: 12%;">Status Trip</th>
-            <th style="width: 13%;">Status Validasi</th>
+            <th style="width: 11%;">Out (WIB)</th>
+            <th style="width: 11%;">In (WIB)</th>
+            <th style="width: 28%; text-align: left;">Customer / Destinasi</th>
+            <th style="width: 9%;">Waktu</th>
+            <th style="width: 15%; text-align: right;">Estimasi UPD</th>
+            <th style="width: 13%;">Status Trip</th>
+            <th style="width: 13%;">Approval</th>
           </tr>
         </thead>
         <tbody>
           ${rowsHtml}
         </tbody>
       </table>
+      
       <div class="footer-container">
-        <div class="ttd-box"><div class="ttd-title">Divalidasi Oleh,</div><div class="ttd-name">HRD</div></div>
+        <div class="ttd-box">
+          <div class="ttd-title">Divalidasi Oleh,</div>
+          <div class="ttd-name">HRD / Pimpinan</div>
+        </div>
         <div class="disclaimer-box">
-          <strong>Catatan Resmi:</strong><br>
-          Dokumen ini dicetak dan divalidasi secara otomatis melalui Sistem PROBASE.<br>
-          Informasi yang tertera di atas adalah sah dan dapat digunakan sebagai dasar<br>
-          pencairan dana UPD maupun audit operasional perusahaan.
+          <strong>Otorisasi Sistem Otomatis:</strong><br>
+          Dokumen ini diekspor dan divalidasi secara digital melalui Mesin ERP C.E.P.U.<br>
+          Seluruh log telah dikunci dengan algoritma Geolokasi & Barcode Scanner terenkripsi.<br>
+          Sah digunakan untuk audit operasional & dasar finalisasi pencairan dana UPD.
         </div>
         <div class="clear"></div>
       </div>
-    </body>
-    </html>`;
+    `;
 
-    const printWindow = window.open('', '_blank');
-    if(printWindow) {
-        printWindow.document.open();
-        printWindow.document.write(htmlTemplate);
-        printWindow.document.close();
-    } else {
-        sysShowToast("Gagal membuka jendela cetak. Izinkan Pop-up pada browser Anda!", "error");
-    }
+    // Engine PDF Config - Kualitas Tinggi
+    const opt = {
+        margin:       0.4,
+        filename:     `${prefixName}.pdf`,
+        image:        { type: 'jpeg', quality: 1 },
+        html2canvas:  { scale: 3, useCORS: true, logging: false },
+        jsPDF:        { unit: 'in', format: 'a4', orientation: 'landscape' }
+    };
+
+    html2pdf().set(opt).from(pdfContainer).save().then(() => {
+        sysShowToast("Dokumen PDF berhasil diunduh!", "success");
+    }).catch(err => {
+        console.error("PDF Export Error:", err);
+        sysShowToast("Gagal mengkompilasi PDF.", "error");
+    });
 }
 
 </script>
