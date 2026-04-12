@@ -200,6 +200,15 @@ function renderWorkspace_Dinas() {
                 DOM_Engine.clear('nav-workspace');
                 if (res.status === "success") {
                     
+                    // [UPDATE KILLER FIX]: Deteksi Active Trip Langsung dari Server!
+                    if (res.data.activeTrip) {
+                        SysState.dinas.isActive = true;
+                        SysState.dinas.data = res.data.activeTrip;
+                        localStorage.setItem('cepu_dinas_state', JSON.stringify(res.data.activeTrip));
+                        renderWorkspace_Dinas(); // Putar balik render menjadi Mode Aktif
+                        return;
+                    }
+
                     const userRole = SysState.user.jabatan.toUpperCase();
                     const userLoc = SysState.user.lokasi.toUpperCase();
                     
@@ -214,7 +223,6 @@ function renderWorkspace_Dinas() {
                     sysShowToast("Gagal memuat data: " + res.message, "error");
                 }
             })
-            // [UPDATE]: Kirim seluruh objek user ke backend agar lebih cerdas
             .api_getInitFormData(SysState.user); 
     }
 }
@@ -1482,42 +1490,69 @@ function action_downloadDeklarasi(stNumber, logs) {
 function execute_downloadDeklarasiPDF(stNumber, logs) {
     sysShowToast("Mengunduh Form Deklarasi...", "info");
 
-    // Ekstraksi Data Spesifik dari log
     let berangkat = logs.length > 0 ? logs[0].waktuKeluar : '-';
     let kembali = logs.length > 0 ? logs[logs.length-1].waktuMasuk : '-';
     let customer = logs.length > 0 ? logs[0].customer : '-';
-    let lokasi = logs.length > 0 ? logs[0].lokasi : '-';
+    let lokasiDestinasi = logs.length > 0 ? logs[0].lokasi : '-';
+
+    let minTglKeluar = null;
+    if (berangkat !== '-') {
+        let datePart = berangkat.split(' ')[0].split('/');
+        if (datePart.length === 3) {
+            minTglKeluar = new Date(parseInt(datePart[2]), parseInt(datePart[1]) - 1, parseInt(datePart[0]));
+        }
+    }
+
+    const bulanRomawi = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
+    const tglReferensi = minTglKeluar ? minTglKeluar : new Date(); 
+    const blnRomawi_Str = bulanRomawi[tglReferensi.getMonth()];
+    const thn_Str = tglReferensi.getFullYear();
+    const formatST = (num) => isNaN(num) ? num : String(num).padStart(3, '0');
+    
+    const formatSTLengkap = `${formatST(stNumber)}/JKT/ST-PS/${blnRomawi_Str}/${thn_Str}`;
 
     let tripsHtml = '';
     let grandTotal = 0;
     let totalBaris = logs.length;
     let batasBarisTetap = 10;
 
+    const fmt = (num) => (num && num > 0) ? num.toLocaleString('id-ID') : '';
+    const namaHariArray = ["MINGGU", "SENIN", "SELASA", "RABU", "KAMIS", "JUMAT", "SABTU"];
+
     for (let i = 0; i < totalBaris; i++) {
-        let nominal = parseFloat(logs[i].nominal) || 0;
-        grandTotal += nominal;
+        let bd = logs[i].breakdown || { upd: 0, makanSiang: 0, makanTotal: 0, lain: 0, total: 0 };
+        grandTotal += bd.total;
         
-        let tglOnly = logs[i].waktuKeluar ? logs[i].waktuKeluar.split(' ')[0] : '-';
-        let nominalFormatted = nominal > 0 ? nominal.toLocaleString('id-ID') : '0';
+        let tglOnly = '-';
+        if (logs[i].waktuKeluar) {
+            let dateStr = logs[i].waktuKeluar.split(' ')[0]; 
+            let parts = dateStr.split('/');
+            if (parts.length === 3) {
+                let d = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+                let namaHari = namaHariArray[d.getDay()]; 
+                tglOnly = `${namaHari}, ${dateStr}`; 
+            } else {
+                tglOnly = dateStr;
+            }
+        }
 
         tripsHtml += `
         <tr>
           <td class="text-left">${tglOnly}</td>
-          <td class="text-left">${logs[i].lokasi}</td>
+          <td class="text-left"></td>
           <td></td>
           <td></td>
-          <td class="text-right">${nominalFormatted}</td>
-          <td class="text-right"></td>
-          <td class="text-right"></td>
-          <td class="text-right"></td>
-          <td class="text-right"></td>
+          <td class="text-right">${fmt(bd.upd)}</td>
           <td></td>
-          <td class="text-right"></td>
-          <td class="text-right">${nominalFormatted}</td>
+          <td class="text-right">${fmt(bd.makanSiang)}</td>
+          <td></td>
+          <td class="text-right">${fmt(bd.makanTotal)}</td>
+          <td></td>
+          <td class="text-right">${fmt(bd.lain)}</td>
+          <td class="text-right" style="font-weight: bold;">${fmt(bd.total)}</td>
         </tr>`;
     }
 
-    // Pembuatan Baris Kosong agar layout presisi dengan template
     for (let j = totalBaris; j < batasBarisTetap; j++) {
         tripsHtml += `<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>`;
     }
@@ -1528,16 +1563,15 @@ function execute_downloadDeklarasiPDF(stNumber, logs) {
     pdfContainer.style.color = '#000';
     pdfContainer.style.backgroundColor = '#fff';
 
-    // [INJEKSI TEMPLATE MURNI]
     pdfContainer.innerHTML = `
       <style>
-        .judul { text-align: center; font-size: 11pt; font-weight: bold; margin-bottom: 8px; margin-top: 5px; color: #000; }
+        .judul { text-align: center; font-size: 11pt; font-weight: bold; margin-bottom: 5px; margin-top: 0px; color: #000; }
         table { width: 100%; border-collapse: collapse; page-break-inside: avoid; color: #000; }
-        .table-kop { margin-bottom: 8px; }
-        .table-kop td { border: 1px solid #000; padding: 2px 4px; height: 16px; vertical-align: middle; white-space: nowrap; font-size: 8pt; }
-        .table-data td, .table-data th { border: 1px solid #000; padding: 2px 4px; height: 16px; vertical-align: middle; font-size: 8pt; }
+        .table-kop { margin-bottom: 6px; }
+        .table-kop td { border: 1px solid #000; padding: 1px 4px; height: 14px; vertical-align: middle; white-space: nowrap; font-size: 8pt; }
+        .table-data td, .table-data th { border: 1px solid #000; padding: 1px 4px; height: 14px; vertical-align: middle; font-size: 8pt; }
         .table-data th { text-align: center; font-weight: normal; }
-        .table-ttd { width: 60%; margin-top: 5px; font-size: 8pt; }
+        .table-ttd { width: 100%; margin-top: 8px; font-size: 8pt; page-break-inside: avoid; }
         .table-ttd th, .table-ttd td { border: 1px solid #000; padding: 2px; text-align: center; vertical-align: top; }
         .table-ttd th { font-weight: normal; }
         .text-center { text-align: center; } .text-right { text-align: right; } .text-left { text-align: left; }
@@ -1547,7 +1581,7 @@ function execute_downloadDeklarasiPDF(stNumber, logs) {
 
       <table class="table-kop">
         <tr>
-          <td style="width: 14%">No. Surat Tugas</td><td style="width: 20%">: ${stNumber}</td>
+          <td style="width: 14%">No. Surat Tugas</td><td style="width: 20%">: ${formatSTLengkap}</td>
           <td style="width: 14%">NAMA</td><td style="width: 15%">: ${SysState.user.nama}</td>
           <td style="width: 14%">Tgl / Jam Berangkat</td><td style="width: 8%">: ${berangkat}</td>
           <td style="width: 15%">Cabang / Site / Customer</td><td style="width: 10%">: ${customer}</td>
@@ -1556,7 +1590,7 @@ function execute_downloadDeklarasiPDF(stNumber, logs) {
           <td>No. Work Order</td><td>:</td>
           <td>Dept / Cost Center</td><td>: ${SysState.user.departemen}</td>
           <td>Tgl / Jam Kembali</td><td>: ${kembali}</td>
-          <td>Lokasi</td><td>: ${lokasi}</td>
+          <td>Lokasi</td><td>: ${lokasiDestinasi}</td>
         </tr>
         <tr>
           <td>No. SR</td><td>:</td>
@@ -1596,21 +1630,21 @@ function execute_downloadDeklarasiPDF(stNumber, logs) {
         <tbody>
           ${tripsHtml}
           <tr>
-            <td colspan="9" rowspan="3" style="border: none; border-top: 1px solid #000; text-align: left; vertical-align: top; padding-top: 6px">
+            <td colspan="9" rowspan="3" style="border: none; border-top: 1px solid #000; text-align: left; vertical-align: top; padding-top: 4px">
               NOTE :<br />
               *) Dilampirkan dengan formulir pengeluaran untuk kendaraan (bila menggunakan kendaraan kantor)<br />
               **) Coret yang tidak perlu
             </td>
             <td colspan="2" class="text-left" style="border: 1px solid #000">Total</td>
-            <td class="text-right" style="border: 1px solid #000">${grandTotal.toLocaleString('id-ID')}</td>
+            <td class="text-right" style="border: 1px solid #000; font-weight: bold;">${grandTotal.toLocaleString('id-ID')}</td>
           </tr>
           <tr>
-            <td colspan="2" class="text-left" style="border: 1px solid #000">Uang Muka / Advance No.&nbsp;&nbsp;&nbsp;${stNumber}</td>
+            <td colspan="2" class="text-left" style="border: 1px solid #000">Uang Muka / Advance No.&nbsp;&nbsp;&nbsp;${formatSTLengkap}</td>
             <td class="text-right" style="border: 1px solid #000">0</td>
           </tr>
           <tr>
             <td colspan="2" class="text-left" style="border: 1px solid #000">Kekurangan / Kelebihan**)</td>
-            <td class="text-right" style="border: 1px solid #000">-${grandTotal.toLocaleString('id-ID')}</td>
+            <td class="text-right" style="border: 1px solid #000; font-weight: bold;">-${grandTotal.toLocaleString('id-ID')}</td>
           </tr>
         </tbody>
       </table>
@@ -1626,20 +1660,17 @@ function execute_downloadDeklarasiPDF(stNumber, logs) {
           <th style="width: 25%">HRGA Div</th>
         </tr>
         <tr>
-          <td style="height: 50px; vertical-align: bottom">${SysState.user.nama}</td>
-          <td style="height: 50px"></td>
-          <td style="height: 50px"></td>
-          <td style="height: 50px"></td>
+          <td style="height: 65px; vertical-align: bottom">${SysState.user.nama}</td>
+          <td style="height: 65px"></td>
+          <td style="height: 65px"></td>
+          <td style="height: 65px"></td>
         </tr>
       </table>
     `;
 
     const prefixName = `CEPU_Deklarasi_ST_${stNumber}_NRPP_${SysState.user.nrpp}`;
-    
-    // [MARGINS PDF KILLER CONFIGURATION] (Top, Right, Bottom, Left dalam Inch)
-    // Sesuai konversi CSS: Top 1.228cm, Right 0.5cm, Bottom 3.916cm, Left 0.5cm
     const opt = {
-        margin:       [0.48, 0.2, 1.54, 0.2], 
+        margin:       [0.48, 0.2, 0.8, 0.2], 
         filename:     `${prefixName}.pdf`,
         image:        { type: 'jpeg', quality: 1 },
         html2canvas:  { scale: 2, useCORS: true },
@@ -1707,11 +1738,10 @@ function execute_downloadPDF(stNumber, logs) {
 
     // Membangun Virtual DOM Container untuk PDF Rendering
     const pdfContainer = document.createElement('div');
-    pdfContainer.style.padding = '30px 40px'; // Spasi putih profesional
+    pdfContainer.style.padding = '30px 40px'; 
     pdfContainer.style.fontFamily = "'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif";
     pdfContainer.style.backgroundColor = "#ffffff";
     
-    // [KILLER UI UPDATE]: Professional Clean Corporate Style
     pdfContainer.innerHTML = `
       <style>
         .kop-perusahaan { font-size: 18pt; font-weight: 900; color: #0f172a; letter-spacing: 0.5px; margin-bottom: 4px; }
@@ -1731,7 +1761,6 @@ function execute_downloadPDF(stNumber, logs) {
         
         .text-left { text-align: left !important; } .text-right { text-align: right !important; }
         
-        /* Premium Badges */
         .badge-app { color: #059669; font-weight: 700; background: #ecfdf5; padding: 4px 8px; border-radius: 6px; font-size: 7.5pt; letter-spacing: 0.5px;} 
         .badge-pen { color: #d97706; font-weight: 700; background: #fffbeb; padding: 4px 8px; border-radius: 6px; font-size: 7.5pt; letter-spacing: 0.5px;} 
         .badge-adj { color: #0284c7; font-weight: 700; background: #f0f9ff; padding: 4px 8px; border-radius: 6px; font-size: 7.5pt; letter-spacing: 0.5px;}
@@ -1803,7 +1832,6 @@ function execute_downloadPDF(stNumber, logs) {
       </div>
     `;
 
-    // Engine PDF Config - Kualitas Tinggi
     const opt = {
         margin:       0.4,
         filename:     `${prefixName}.pdf`,
@@ -1819,5 +1847,4 @@ function execute_downloadPDF(stNumber, logs) {
         sysShowToast("Gagal mengkompilasi PDF.", "error");
     });
 }
-
 </script>
