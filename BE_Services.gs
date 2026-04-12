@@ -199,7 +199,7 @@ function api_submitPerjalananDinas(payload, user) {
     // ==========================================================
     // PROTOKOL ODOC (One-Day-One-Checkin) - DYNAMIC COLUMN VALIDATOR
     // ==========================================================
-    if (user.jabatan !== "Super Admin" && user.jabatan !== "Administrator") {
+    if (user.jabatan !== "Super Admin" && user.jabatan !== "Administrator" && user.jabatan !== "HRD") {
         const dataLog = sheet.getDataRange().getValues();
         
         let nrppIndex = 1;
@@ -610,6 +610,9 @@ function api_adminResetDevice(nrpp) {
   } catch(e) { return { status: "error", message: e.toString() }; }
 }
 
+// ==========================================================
+// MODUL SUPER ADMIN: GLOBAL LIVE TRACKING (RADAR AKTIF)
+// ==========================================================
 function api_adminGetLiveLogs() {
   try {
     const timestamp = new Date();
@@ -629,6 +632,11 @@ function api_adminGetLiveLogs() {
         if(data.length > 1) {
           let timeIndex = isSales ? 10 : 11;
           for(let i = data.length - 1; i >= 1; i--) { 
+            
+            // [KILLER FIX]: Cegat dari awal! Hanya proses yang statusnya "SEDANG JALAN"
+            let currentStatus = isSales ? (data[i][15] || "SEDANG JALAN") : (data[i][17] || "SEDANG JALAN");
+            if (currentStatus.toString().toUpperCase() !== "SEDANG JALAN") continue; // Abaikan yang sudah SELESAI
+
             let wKeluar = data[i][timeIndex];
             if (!wKeluar) continue;
             
@@ -643,7 +651,7 @@ function api_adminGetLiveLogs() {
                 divisi: isSales ? "SALES" : "OPS (" + data[i][7] + ")",
                 customer: isSales ? data[i][8] : data[i][9],
                 waktuKeluar: Utilities.formatDate(wKeluarDate, "Asia/Jakarta", "HH:mm"),
-                status: isSales ? (data[i][15] || "SEDANG JALAN") : (data[i][17] || "SEDANG JALAN")
+                status: currentStatus.toString().toUpperCase()
               });
             }
           }
@@ -773,7 +781,7 @@ function api_getLogPribadi(user) {
                calc_upd = 0; calc_makanTotal = 0; calc_makanSiang = 0; calc_lain = 0; calc_total = 0;
            }
 
-           groupedData[st].push({
+          groupedData[st].push({
                customer: (iCust !== -1 && data[i][iCust]) ? data[i][iCust].toString() : "-",
                lokasi: (iLokasi !== -1 && data[i][iLokasi]) ? data[i][iLokasi].toString() : "-",
                waktuKeluar: wKeluarStr,
@@ -782,6 +790,7 @@ function api_getLogPribadi(user) {
                nominal: dbNominal,
                status: (iStatus !== -1 && data[i][iStatus]) ? data[i][iStatus].toString() : "SEDANG JALAN",
                klaim: (iKlaim !== -1 && data[i][iKlaim]) ? data[i][iKlaim].toString() : "BELUM KLAIM",
+               persetujuan: data[i][20] ? data[i][20].toString().toUpperCase() : "PENDING", // <--- BACA DARI KOLOM U (Status_Approve)
                breakdown: {
                    upd: calc_upd,
                    makanTotal: calc_makanTotal,
@@ -797,4 +806,395 @@ function api_getLogPribadi(user) {
   } catch(e) {
     return { status: "error", message: e.toString() };
   }
+}
+
+// ==========================================================
+// MODUL USER: PRINT LOCK & ID KLAIM GENERATOR (AUTO-TARGETING)
+// ==========================================================
+function api_updatePrintStatus(stNumber, user) {
+  try {
+    const dbUpd = SpreadsheetApp.openById(DB_UPD_ID);
+    let targetSheetName = "Log_" + user.lokasi.trim();
+    let sheet = dbUpd.getSheetByName(targetSheetName);
+    if(!sheet) throw new Error("Sheet log tidak ditemukan.");
+
+    const data = sheet.getDataRange().getValues();
+    const idKlaim = "PRN-" + new Date().getTime() + "-" + user.nrpp;
+
+    // [KILLER FIX]: Dynamic Header Targeting (Rudal Pencari Kolom Otomatis)
+    const headers = data[0].map(h => String(h).toUpperCase().trim());
+    
+    let idxST = headers.indexOf("NO_ST");
+    let idxNRPP = headers.indexOf("NRPP");
+    
+    // Cari persis di mana Kolom Status Klaim berada
+    let idxStatusKlaim = headers.indexOf("STATUS_KLAIM");
+    if (idxStatusKlaim === -1) idxStatusKlaim = headers.indexOf("STATUS KLAIM");
+    if (idxStatusKlaim === -1) idxStatusKlaim = 18; // Fallback jika nama beda (Kolom S)
+
+    // Cari persis di mana Kolom ID Klaim berada
+    let idxIdKlaim = headers.indexOf("ID_KLAIM");
+    if (idxIdKlaim === -1) idxIdKlaim = headers.indexOf("ID KLAIM");
+    if (idxIdKlaim === -1) idxIdKlaim = 19; // Fallback jika nama beda (Kolom T)
+
+    if (idxST === -1 || idxNRPP === -1) throw new Error("Kolom NO_ST atau NRPP tidak ditemukan di database!");
+
+    // [KILLER FIX 2]: Normalisasi String Mutlak untuk menghancurkan Ilusi Tanda Kutip (')
+    const targetST = String(stNumber).replace(/^'/, '').trim();
+    const targetNRPP = String(user.nrpp).trim();
+    let updatedCount = 0;
+
+    for(let i = 1; i < data.length; i++) {
+      let dbST = data[i][idxST] ? String(data[i][idxST]).replace(/^'/, '').trim() : "TANPA ST";
+      let dbNRPP = data[i][idxNRPP] ? String(data[i][idxNRPP]).trim() : "";
+
+      // Jika ST dan NRPP terbukti identik, KUNCI MUTLAK!
+      if(dbST === targetST && dbNRPP === targetNRPP) {
+        sheet.getRange(i + 1, idxStatusKlaim + 1).setValue("SUDAH PRINT"); // +1 karena getRange dihitung dari 1
+        sheet.getRange(i + 1, idxIdKlaim + 1).setValue(idKlaim);
+        updatedCount++;
+      }
+    }
+    
+    console.log(`Berhasil mengunci ${updatedCount} baris untuk ST ${targetST}`);
+    return { status: "success", message: `Terkunci ${updatedCount} baris` };
+    
+  } catch(e) {
+    console.error("Print Lock Error: ", e.message);
+    return { status: "error", message: e.toString() };
+  }
+}
+
+// ==========================================================
+// MODUL OTOMASI: ROBOT SAPU BERSIH (AUTO-SWEEPER)
+// Trigger: Cron Job Harian pukul 23:50 atau 23:59
+// ==========================================================
+
+function trigger_AutoSweeper() {
+  try {
+    const dbUpd = SpreadsheetApp.openById(DB_UPD_ID);
+    const dbSales = SpreadsheetApp.openById(DB_SALES_ID);
+    const dbRekap = SpreadsheetApp.openById(DB_REKAP_ID);
+    
+    // 1. Eksekusi Sapu Bersih untuk Pasukan Operasional (DB_UPD)
+    dbUpd.getSheets().forEach(sheet => {
+      if (!sheet.getName().startsWith("Log_")) return;
+      const data = sheet.getDataRange().getValues();
+      if (data.length <= 1) return;
+
+      for (let i = 1; i < data.length; i++) {
+        if (data[i][17] === "SEDANG JALAN") { // Kolom R (Index 17)
+          let wKeluar = data[i][11]; // Kolom L (Index 11)
+          let dateBase = (wKeluar instanceof Date) ? wKeluar : new Date(wKeluar);
+          if (isNaN(dateBase.getTime())) dateBase = new Date(); // Fallback
+
+          // Kunci Mutlak Checkout Paksa
+          let forcedTimeStr = Utilities.formatDate(dateBase, "Asia/Jakarta", "yyyy/MM/dd") + " 23:59:00";
+          
+          sheet.getRange(i + 1, 14).setValue(forcedTimeStr); // Waktu Masuk
+          sheet.getRange(i + 1, 15).setValue("SYSTEM_AUTO_SWEEP"); // Kordinat
+          sheet.getRange(i + 1, 16).setValue(0); // Durasi = 0 (Hangus)
+          sheet.getRange(i + 1, 17).setValue(0); // Nominal = 0 (Ditahan)
+          sheet.getRange(i + 1, 18).setValue("SELESAI"); // Status ODOC
+          sheet.getRange(i + 1, 19).setValue("PENDING"); // Red Flag ke HRD
+
+          updateRekapSweeper(dbRekap, data[i][1], dateBase, sheet.getName().replace("Log_", ""));
+        }
+      }
+    });
+
+    // 2. Eksekusi Sapu Bersih untuk Pasukan Sales (DB_SALES)
+    dbSales.getSheets().forEach(sheet => {
+      if (!sheet.getName().startsWith("Log_")) return;
+      const data = sheet.getDataRange().getValues();
+      if (data.length <= 1) return;
+
+      for (let i = 1; i < data.length; i++) {
+        if (data[i][15] === "SEDANG JALAN") { // Kolom P (Index 15)
+          let wKeluar = data[i][10]; // Kolom K (Index 10)
+          let dateBase = (wKeluar instanceof Date) ? wKeluar : new Date(wKeluar);
+          if (isNaN(dateBase.getTime())) dateBase = new Date(); 
+
+          let forcedTimeStr = Utilities.formatDate(dateBase, "Asia/Jakarta", "yyyy/MM/dd") + " 23:59:00";
+          
+          sheet.getRange(i + 1, 13).setValue(forcedTimeStr);
+          sheet.getRange(i + 1, 14).setValue("SYSTEM_AUTO_SWEEP");
+          sheet.getRange(i + 1, 15).setValue(0); 
+          sheet.getRange(i + 1, 16).setValue("SELESAI");
+
+          updateRekapSweeper(dbRekap, data[i][1], dateBase, "Sales");
+        }
+      }
+    });
+  } catch(e) { console.error("Sistem Sweeper Gagal: " + e.message); }
+}
+
+// ==========================================================
+// MODUL SUPER ADMIN: LIST APPROVAL & BULK APPROVE
+// ==========================================================
+function api_adminGetApprovalList() {
+  try {
+    let approvalData = [];
+    const dbUpd = SpreadsheetApp.openById(DB_UPD_ID);
+
+    dbUpd.getSheets().forEach(sheet => {
+      if (!sheet.getName().startsWith("Log_")) return;
+      const data = sheet.getDataRange().getValues();
+      if (data.length <= 1) return;
+
+      for(let i = data.length - 1; i >= 1; i--) {
+        let statusJalan = data[i][17] ? data[i][17].toString().toUpperCase() : "";
+        let statusKlaim = data[i][18] ? data[i][18].toString().toUpperCase() : "BELUM KLAIM"; // Kolom S
+        let statusApprove = data[i][20] ? data[i][20].toString().toUpperCase() : "PENDING";   // Kolom U
+        
+        // [SMART FILTER FIX]:
+        // Tampilkan jika Status Jalan SELESAI DAN (Belum Di-Approve ATAU Masih Terkunci Print)
+        const butuhApproval = statusApprove.includes("PENDING");
+        const masihTerkunci = statusKlaim.includes("SUDAH");
+
+        if(statusJalan === "SELESAI" && (butuhApproval || masihTerkunci)) {
+          let wMasuk = data[i][13] ? data[i][13].toString() : "";
+          let isAnomali = wMasuk.includes("23:59");
+          
+          let fmtKeluar = (data[i][11] instanceof Date) ? Utilities.formatDate(data[i][11], "Asia/Jakarta", "yyyy-MM-dd'T'HH:mm") : "";
+          let fmtMasuk = (data[i][13] instanceof Date) ? Utilities.formatDate(data[i][13], "Asia/Jakarta", "yyyy-MM-dd'T'HH:mm") : "";
+
+          approvalData.push({
+            idTransaksi: data[i][0].toString(), nrpp: data[i][1], nama: data[i][2],
+            jabatan: data[i][3], golongan: data[i][4], divisi: "OPS (" + data[i][7] + ")", customer: data[i][9],
+            waktuKeluar: (data[i][11] instanceof Date) ? Utilities.formatDate(data[i][11], "Asia/Jakarta", "dd/MM/yyyy HH:mm") : data[i][11].toString(),
+            waktuMasuk: (data[i][13] instanceof Date) ? Utilities.formatDate(data[i][13], "Asia/Jakarta", "dd/MM/yyyy HH:mm") : (wMasuk || "-"),
+            rawKeluar: fmtKeluar, rawMasuk: fmtMasuk, sheetName: sheet.getName(),
+            durasi: data[i][15], nominal: data[i][16], isAnomali: isAnomali, 
+            statusKlaim: statusKlaim, persetujuan: statusApprove
+          });
+        }
+      }
+    });
+    return { status: "success", data: approvalData };
+  } catch (e) { return { status: "error", message: e.toString() }; }
+}
+
+function api_adminEditLog(payload) {
+  try {
+    const db = SpreadsheetApp.openById(DB_UPD_ID);
+    const sheet = db.getSheetByName(payload.sheetName);
+    if(!sheet) throw new Error("Sheet asal tidak ditemukan.");
+
+    const data = sheet.getDataRange().getValues();
+    let targetRow = -1;
+    for(let i=1; i<data.length; i++) {
+      if(data[i][0].toString() === payload.idTransaksi) { targetRow = i + 1; break; }
+    }
+    if(targetRow === -1) throw new Error("ID Transaksi tidak valid.");
+
+    // Kalkulasi Waktu Baru
+    const dKeluar = new Date(payload.wKeluar.replace("T", " ") + ":00 +0700");
+    const dMasuk = new Date(payload.wMasuk.replace("T", " ") + ":00 +0700");
+    const diffMs = dMasuk - dKeluar;
+    if(diffMs < 0) throw new Error("Waktu masuk tidak boleh lebih awal dari keluar.");
+    const durasiJam = diffMs / (1000 * 60 * 60);
+
+    // Kalkulasi Ulang UPD
+    let nominalUPD = 0;
+    const dbMaster = SpreadsheetApp.openById(DB_MASTER_ID);
+    const masterUPD = dbMaster.getSheetByName("Master_UPD").getDataRange().getValues();
+    let baseUPD = 0, uangMakan = 0, mknSiangLibur = 0, lainKerja = 0, lainLibur = 0;
+    for(let i=1; i<masterUPD.length; i++){
+      if(masterUPD[i][0].toString().toUpperCase() === payload.jabatan.toUpperCase() && masterUPD[i][1].toString().toUpperCase() === payload.golongan.toUpperCase()){
+        baseUPD = (durasiJam >= 8) ? parseFloat(masterUPD[i][2] || 0) : parseFloat(masterUPD[i][3] || 0);
+        uangMakan = parseFloat(masterUPD[i][4] || 0);
+        mknSiangLibur = parseFloat(masterUPD[i][5] || 0);
+        lainKerja = parseFloat(masterUPD[i][6] || 0);
+        lainLibur = parseFloat(masterUPD[i][7] || 0);
+        break;
+      }
+    }
+    const isWeekend = (dMasuk.getDay() === 0 || dMasuk.getDay() === 6);
+    nominalUPD = isWeekend ? (baseUPD + mknSiangLibur + uangMakan + lainLibur) : (baseUPD + uangMakan + lainKerja);
+
+    const timeKeluarSave = Utilities.formatDate(dKeluar, "Asia/Jakarta", "yyyy/MM/dd HH:mm:ss");
+    const timeMasukSave = Utilities.formatDate(dMasuk, "Asia/Jakarta", "yyyy/MM/dd HH:mm:ss");
+
+    // Timpa Database
+    sheet.getRange(targetRow, 12).setValue(timeKeluarSave); // L (Keluar)
+    sheet.getRange(targetRow, 14).setValue(timeMasukSave);  // N (Masuk)
+    sheet.getRange(targetRow, 16).setValue(durasiJam.toFixed(2)); // P (Durasi)
+    sheet.getRange(targetRow, 17).setValue(nominalUPD); // Q (Nominal)
+    sheet.getRange(targetRow, 19).setValue("BELUM KLAIM"); // Reset Klaim agar gembok terbuka
+
+    return {status: "success", message: `Data dikoreksi! Durasi baru: ${durasiJam.toFixed(2)} Jam.`};
+  } catch(e) { return {status: "error", message: e.toString()}; }
+}
+
+function api_adminBulkApprove(trxIds) {
+  try {
+    const dbUpd = SpreadsheetApp.openById(DB_UPD_ID);
+    let count = 0;
+
+    dbUpd.getSheets().forEach(sheet => {
+      if (!sheet.getName().startsWith("Log_")) return;
+      const data = sheet.getDataRange().getValues();
+      
+      for (let i = 1; i < data.length; i++) {
+        let currentId = data[i][0].toString();
+        if (trxIds.includes(currentId)) {
+          // Eksekusi TEPAT di Kolom U (Kolom ke-21)
+          sheet.getRange(i + 1, 21).setValue("APPROVED"); 
+          count++;
+        }
+      }
+    });
+
+    return { status: "success", message: `${count} Dokumen perjalanan berhasil disetujui!` };
+  } catch (e) {
+    return { status: "error", message: e.toString() };
+  }
+}
+
+function updateRekapSweeper(dbRekap, nrpp, dateBase, lokasiStr) {
+  try {
+    let rekapSheetName = lokasiStr === "Sales" ? "Rekap_Absensi_Sales" : "Rekap_Absensi_" + lokasiStr;
+    let sheet = dbRekap.getSheetByName(rekapSheetName);
+    if(!sheet) return;
+
+    let data = sheet.getDataRange().getValues();
+    let targetRow = -1; let targetCol = -1;
+    let todayStr = Utilities.formatDate(dateBase, "Asia/Jakarta", "dd/MM/yyyy");
+
+    for (let r = 1; r < data.length; r++) {
+      if (data[r][0].toString() === nrpp.toString()) { targetRow = r + 1; break; }
+    }
+    if(data.length > 0) {
+      for (let c = 2; c < data[0].length; c += 4) {
+        let cellDateStr = (data[0][c] instanceof Date) ? Utilities.formatDate(data[0][c], "Asia/Jakarta", "dd/MM/yyyy") : data[0][c].toString();
+        if (cellDateStr.includes(todayStr)) { targetCol = c + 1; break; }
+      }
+    }
+    if(targetRow !== -1 && targetCol !== -1) {
+      sheet.getRange(targetRow, targetCol + 1).setValue("23:59"); // Waktu Masuk Anomali
+      sheet.getRange(targetRow, targetCol + 3).setValue("0"); // Durasi Anomali
+    }
+  } catch(e) {}
+}
+
+// ==========================================================
+// MODUL SUPER ADMIN: UNLOCK PRINT STATUS (RESET CLAIM)
+// ==========================================================
+function api_adminUnlockPrint(stNumber, nrpp) {
+  try {
+    const dbUpd = SpreadsheetApp.openById(DB_UPD_ID);
+    let count = 0;
+    
+    // Scan seluruh sheet log operasional
+    dbUpd.getSheets().forEach(sheet => {
+      if (!sheet.getName().startsWith("Log_")) return;
+      const data = sheet.getDataRange().getValues();
+      const headers = data[0].map(h => String(h).toUpperCase().trim());
+      
+      const idxST = headers.indexOf("NO_ST");
+      const idxNRPP = headers.indexOf("NRPP");
+      const idxStatusKlaim = headers.indexOf("STATUS_KLAIM") !== -1 ? headers.indexOf("STATUS_KLAIM") : 18;
+      const idxIdKlaim = headers.indexOf("ID_KLAIM") !== -1 ? headers.indexOf("ID_KLAIM") : 19;
+
+      const targetST = String(stNumber).replace(/^'/, '').trim();
+      const targetNRPP = String(nrpp).trim();
+
+      for(let i = 1; i < data.length; i++) {
+        let dbST = data[i][idxST] ? String(data[i][idxST]).replace(/^'/, '').trim() : "";
+        let dbNRPP = data[i][idxNRPP] ? String(data[i][idxNRPP]).trim() : "";
+
+        if(dbST === targetST && dbNRPP === targetNRPP) {
+          sheet.getRange(i + 1, idxStatusKlaim + 1).setValue("BELUM PRINT"); // Reset Status
+          sheet.getRange(i + 1, idxIdKlaim + 1).setValue("");               // Hapus ID Klaim
+          count++;
+        }
+      }
+    });
+
+    return { status: "success", message: `Gembok ST ${stNumber} berhasil dibuka (${count} baris).` };
+  } catch(e) {
+    return { status: "error", message: e.toString() };
+  }
+}
+
+function api_adminBulkUnlockPrint(trxIds) {
+  try {
+    const dbUpd = SpreadsheetApp.openById(DB_UPD_ID);
+    let count = 0;
+
+    dbUpd.getSheets().forEach(sheet => {
+      if (!sheet.getName().startsWith("Log_")) return;
+      const data = sheet.getDataRange().getValues();
+      const headers = data[0].map(h => String(h).toUpperCase().trim());
+      
+      const idxStatusKlaim = headers.indexOf("STATUS_KLAIM") !== -1 ? headers.indexOf("STATUS_KLAIM") : 18;
+      const idxIdKlaim = headers.indexOf("ID_KLAIM") !== -1 ? headers.indexOf("ID_KLAIM") : 19;
+
+      for (let i = 1; i < data.length; i++) {
+        let currentId = data[i][0].toString();
+        if (trxIds.includes(currentId)) {
+          sheet.getRange(i + 1, idxStatusKlaim + 1).setValue("BELUM PRINT");
+          sheet.getRange(i + 1, idxIdKlaim + 1).setValue("");
+          count++;
+        }
+      }
+    });
+
+    return { status: "success", message: `${count} Gembok berhasil dibuka secara masal!` };
+  } catch (e) {
+    return { status: "error", message: e.toString() };
+  }
+}
+
+// ==========================================================
+// MODUL HRIS: ENGINE SCANNER LOG INDIVIDU (30 HARI)
+// ==========================================================
+function api_adminGetIndividualLogs(nrpp, month, year) {
+  try {
+    const dbUpd = SpreadsheetApp.openById(DB_UPD_ID);
+    let logs = [];
+    
+    dbUpd.getSheets().forEach(sheet => {
+      const sheetName = sheet.getName();
+      if (!sheetName.startsWith("Log_")) return;
+      
+      const data = sheet.getDataRange().getValues();
+      if (data.length <= 1) return;
+      
+      const headers = data[0].map(h => String(h).toUpperCase().trim());
+      const idxNRPP = headers.indexOf("NRPP");
+      const idxTgl = headers.indexOf("WAKTU_KELUAR");
+      const idxCust = headers.indexOf("CUSTOMER");
+      const idxLok = headers.indexOf("LOKASI");
+      const idxDur = headers.indexOf("DURASI_JAM");
+      const idxNom = headers.indexOf("NOMINAL_UPD");
+      const idxStat = headers.indexOf("STATUS_PERJALANAN");
+      const idxApp = headers.indexOf("STATUS_APPROVE");
+      
+      for (let i = 1; i < data.length; i++) {
+        if (String(data[i][idxNRPP]) === String(nrpp)) {
+          let rawTgl = data[i][idxTgl];
+          let dateObj = (rawTgl instanceof Date) ? rawTgl : new Date(rawTgl);
+          
+          // Filter Berdasarkan Bulan dan Tahun Pilihan HRD
+          if (dateObj.getMonth() === parseInt(month) && dateObj.getFullYear() === parseInt(year)) {
+            logs.push({
+              tanggal: Utilities.formatDate(dateObj, "Asia/Jakarta", "dd/MM/yyyy HH:mm"),
+              customer: data[i][idxCust] || "-",
+              lokasi: data[i][idxLok] || "-",
+              durasi: parseFloat(data[i][idxDur] || 0),
+              nominal: parseFloat(data[i][idxNom] || 0),
+              status: data[i][idxStat] || "SELESAI",
+              persetujuan: data[i][idxApp] || "PENDING",
+              rawDate: dateObj.getTime()
+            });
+          }
+        }
+      }
+    });
+    
+    logs.sort((a, b) => a.rawDate - b.rawDate); // Urutkan dari tanggal awal bulan
+    return { status: "success", data: logs, filter: { month, year } };
+  } catch (e) { return { status: "error", message: e.toString() }; }
 }
