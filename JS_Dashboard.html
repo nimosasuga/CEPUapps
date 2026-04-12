@@ -1258,17 +1258,38 @@ function action_fetchAndExport(sheetName) {
         .api_adminGetRekapData(sheetName);
 }
 
-// [KUNCI ABSOLUT]: Mesin Lazy-Loading Excel Pure DOM
+function action_downloadDeklarasi(stNumber, logs) {
+    sysShowToast("Mempersiapkan Form Deklarasi...", "info");
+    if (typeof html2pdf === "undefined") {
+        const script = document.createElement("script");
+        script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+        script.onload = () => execute_downloadDeklarasiPDF(stNumber, logs);
+        document.head.appendChild(script);
+    } else { 
+        execute_downloadDeklarasiPDF(stNumber, logs); 
+    }
+}
+
+function action_printDeklarasi(stNumber, logs) {
+    sysShowToast("Mengkompilasi data... Menyiapkan mesin PDF.", "info");
+    if (typeof html2pdf === "undefined") {
+        const script = document.createElement("script");
+        script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+        script.onload = () => execute_downloadPDF(stNumber, logs);
+        document.head.appendChild(script);
+    } else { 
+        execute_downloadPDF(stNumber, logs); 
+    }
+}
+
 function action_exportExcel(sheetName, dataMatrix, btnElement, originalHtml) {
-    // Jika library SheetJS belum ada di memory browser, kita suntikkan scriptnya secara on-the-fly
-    if (typeof XLSX === 'undefined') {
-        const script = document.createElement('script');
-        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    if (typeof XLSX === "undefined") {
+        const script = document.createElement("script");
+        script.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
         script.onload = () => executeExcelExport(sheetName, dataMatrix, btnElement, originalHtml);
         document.head.appendChild(script);
-    } else {
-        // Jika sudah pernah didownload (klik kedua kalinya), langsung eksekusi
-        executeExcelExport(sheetName, dataMatrix, btnElement, originalHtml);
+    } else { 
+        executeExcelExport(sheetName, dataMatrix, btnElement, originalHtml); 
     }
 }
 
@@ -1473,19 +1494,7 @@ function buildUI_CetakDeklarasi(groupedData) {
     container.appendChild(DOM_Engine.create('div', 'bg-slate-50 min-h-screen p-2', {}, [headerSec, grid]));
 }
 
-// --- MESIN KOMPILASI TEMPLATE DEKLARASI ---
-function action_downloadDeklarasi(stNumber, logs) {
-    sysShowToast("Mempersiapkan Form Deklarasi...", "info");
 
-    if (typeof html2pdf === 'undefined') {
-        const script = document.createElement('script');
-        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
-        script.onload = () => execute_downloadDeklarasiPDF(stNumber, logs);
-        document.head.appendChild(script);
-    } else {
-        execute_downloadDeklarasiPDF(stNumber, logs);
-    }
-}
 
 function execute_downloadDeklarasiPDF(stNumber, logs) {
     sysShowToast("Mengunduh Form Deklarasi...", "info");
@@ -1685,20 +1694,6 @@ function execute_downloadDeklarasiPDF(stNumber, logs) {
     });
 }
 
-  function action_printDeklarasi(stNumber, logs) {
-    sysShowToast("Mengkompilasi data... Menyiapkan mesin PDF.", "info");
-
-    // [KILLER FEATURE]: Lazy-Load html2pdf.js secara On-The-Fly (Hemat Memori)
-    if (typeof html2pdf === 'undefined') {
-        const script = document.createElement('script');
-        script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
-        script.onload = () => execute_downloadPDF(stNumber, logs);
-        document.head.appendChild(script);
-    } else {
-        // Eksekusi langsung jika library sudah tersimpan di cache browser
-        execute_downloadPDF(stNumber, logs);
-    }
-  }
 
 function execute_downloadPDF(stNumber, logs) {
     sysShowToast("Mengekspor ke format PDF...", "info");
