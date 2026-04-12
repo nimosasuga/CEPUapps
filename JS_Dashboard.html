@@ -7,12 +7,12 @@
 
 // --- CARI DAN GANTI FUNGSI renderView_MainLayout & toggleSidebar DI JS_Dashboard.html ---
 
-function renderView_MainLayout() {
+  function renderView_MainLayout() {
     DOM_Engine.clear('sys-root');
     const root = document.getElementById('sys-root');
     const isSuperAdmin = (SysState.user.jabatan === 'Super Admin' || SysState.user.jabatan === 'Administrator');
 
-const overlay = DOM_Engine.create('div', 'fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 lg:hidden opacity-0 pointer-events-none transition-opacity duration-300', { id: 'nav-overlay', onClick: toggleSidebar });
+    const overlay = DOM_Engine.create('div', 'fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 lg:hidden opacity-0 pointer-events-none transition-opacity duration-300', { id: 'nav-overlay', onClick: toggleSidebar });
 
     const menuItems = [
         DOM_Engine.create('div', 'sys-menu-item flex items-center gap-4 px-6 py-4 mx-4 rounded-2xl font-bold bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-lg cursor-pointer transition-transform hover:-translate-y-1 hover:shadow-indigo-500/30 mt-2', { 
@@ -61,7 +61,8 @@ const overlay = DOM_Engine.create('div', 'fixed inset-0 bg-slate-900/40 backdrop
 
         menuItems.push(createAdminMenu('menu-master', 'fa-database', 'Master Data (DB)', renderWorkspace_MasterDB));
         menuItems.push(createAdminMenu('menu-karyawan', 'fa-users-gear', 'Kelola Karyawan', renderWorkspace_KelolaKaryawan));
-        menuItems.push(createAdminMenu('menu-log', 'fa-shield-halved', 'Log Sistem (All)', renderWorkspace_LogSistem));
+        menuItems.push(createAdminMenu('menu-live-tracking', 'fa-satellite-dish', 'Global Live Tracking', renderWorkspace_LiveTracking));
+        menuItems.push(createAdminMenu('menu-approval', 'fa-file-signature', 'Anomali & Approval', renderWorkspace_Approval));
         menuItems.push(createAdminMenu('menu-rekap', 'fa-file-csv', 'Export Data Rekap', renderWorkspace_RekapData));
     }
 
@@ -132,7 +133,7 @@ const overlay = DOM_Engine.create('div', 'fixed inset-0 bg-slate-900/40 backdrop
 
     // [UPDATE] Memicu navigasi pertama dengan status Aktif untuk menu Dinas
     sysNavigateTo(renderWorkspace_Dinas, 'menu-dinas');
-}
+  }
 
 function toggleSidebar() {
     SysState.ui.sidebarOpen = !SysState.ui.sidebarOpen;
@@ -160,7 +161,7 @@ function sysNavigateTo(workspaceFunc, activeId) {
 }
 
 function sysUpdateActiveMenu(activeId) {
-  const menuIds = ['menu-dinas', 'menu-log-pribadi', 'menu-cetak-deklarasi', 'menu-master', 'menu-karyawan', 'menu-log', 'menu-rekap'];
+  const menuIds = ['menu-dinas', 'menu-log-pribadi', 'menu-cetak-deklarasi', 'menu-master', 'menu-karyawan', 'menu-live-tracking', 'menu-approval', 'menu-rekap'];
 
     menuIds.forEach(id => {
         const el = document.getElementById(id);
@@ -1106,76 +1107,353 @@ function execute_resetDevice(nrpp) {
 // MODUL GLOBAL LIVE TRACKING
 // --------------------------------------------------------------------------------------
 
-function renderWorkspace_LogSistem() {
+// --------------------------------------------------------------------------------------
+// MODUL GLOBAL LIVE TRACKING & APPROVAL (TABBED INTERFACE)
+// --------------------------------------------------------------------------------------
+
+let State_MonitoringTab = 'live'; // Status default saat menu dibuka
+
+// ==============================================================================
+// MODUL 1: GLOBAL LIVE TRACKING (STANDALONE)
+// ==============================================================================
+function renderWorkspace_LiveTracking() {
     DOM_Engine.clear('nav-workspace');
     const container = document.getElementById('nav-workspace');
     
     container.appendChild(DOM_Engine.create('div', 'flex flex-col items-center justify-center py-20 fade-in', {}, [
-        DOM_Engine.create('i', 'fa-solid fa-satellite-dish fa-spin text-4xl text-blue-500 mb-4'),
+        DOM_Engine.create('i', 'fa-solid fa-satellite-dish fa-spin text-4xl text-indigo-500 mb-4'),
         DOM_Engine.create('p', 'text-slate-500 font-medium tracking-wide', {}, ['Menyapu sinyal operasional hari ini...'])
     ]));
 
     google.script.run.withSuccessHandler((res) => {
-        if (res.status === 'success') buildUI_LiveTracking(res.data);
-        else { sysShowToast(res.message, 'error'); renderWorkspace_MasterDB(); }
+        if (res.status === 'success') {
+            DOM_Engine.clear('nav-workspace');
+            
+            const headerSec = DOM_Engine.create('div', 'mb-8 fade-in flex justify-between items-end', {}, [
+                DOM_Engine.create('div', '', {}, [
+                    DOM_Engine.create('h2', 'text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-3', {}, [
+                        DOM_Engine.create('div', 'relative flex items-center justify-center w-8 h-8', {}, [
+                            DOM_Engine.create('span', 'animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75'),
+                            DOM_Engine.create('i', 'relative fa-solid fa-satellite-dish text-indigo-600 text-xl')
+                        ]),
+                        'Global Live Tracking'
+                    ]),
+                    DOM_Engine.create('p', 'text-slate-500 text-sm mt-1 ml-11', {}, ['Radar aktivitas Keberangkatan Hari Ini (WIB).'])
+                ]),
+                DOM_Engine.create('button', 'bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 px-4 py-2 rounded-xl font-bold text-sm shadow-sm flex items-center gap-2 transition-all', { onClick: renderWorkspace_LiveTracking }, [DOM_Engine.create('i', 'fa-solid fa-rotate-right'), 'Refresh Radar'])
+            ]);
+
+            if (res.data.length === 0) {
+                container.appendChild(DOM_Engine.create('div', 'bg-aurora min-h-screen p-2', {}, [headerSec, DOM_Engine.create('div', 'glass text-center py-16 rounded-[2rem] border border-white', {}, [
+                    DOM_Engine.create('i', 'fa-solid fa-mug-hot text-5xl text-slate-300 mb-4'),
+                    DOM_Engine.create('h3', 'text-lg font-bold text-slate-500', {}, ['Sinyal Kosong. Belum ada aktivitas keberangkatan hari ini.'])
+                ])]));
+                return;
+            }
+
+            const trs = res.data.map(log => {
+                const isJalan = log.status.toUpperCase() === "SEDANG JALAN";
+                const statusBadge = DOM_Engine.create('div', `inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${isJalan ? 'bg-rose-50 text-rose-600 border-rose-200' : 'bg-emerald-50 text-emerald-600 border-emerald-200'}`, {}, [
+                    DOM_Engine.create('span', `w-2 h-2 rounded-full ${isJalan ? 'bg-rose-500 animate-pulse' : 'bg-emerald-500'}`), isJalan ? 'DI PERJALANAN' : 'SELESAI'
+                ]);
+
+                return DOM_Engine.create('tr', 'hover:bg-slate-50/50 transition-colors border-b border-slate-100', {}, [
+                    DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap', {}, [
+                        DOM_Engine.create('p', 'text-sm font-extrabold text-slate-800', {}, [log.nama]),
+                        DOM_Engine.create('p', 'text-[10px] font-bold text-slate-400 uppercase tracking-wider', {}, [log.nrpp + " • " + log.divisi])
+                    ]),
+                    DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap', {}, [
+                        DOM_Engine.create('div', 'flex items-center gap-2', {}, [DOM_Engine.create('i', 'fa-regular fa-clock text-indigo-400'), DOM_Engine.create('span', 'text-sm font-bold text-slate-700', {}, [log.waktuKeluar, ' WIB'])])
+                    ]),
+                    DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap text-sm font-bold text-slate-700', {}, [log.customer]),
+                    DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap', {}, [statusBadge])
+                ]);
+            });
+
+            const thead = DOM_Engine.create('thead', 'bg-slate-50/80 border-b border-slate-200', {}, [
+                DOM_Engine.create('tr', '', {}, ['Personel & Divisi', 'Waktu Keluar', 'Target Customer', 'Live Status'].map(h => DOM_Engine.create('th', 'px-5 py-4 text-left text-xs font-extrabold text-slate-500 uppercase tracking-widest', {}, [h])))
+            ]);
+
+            const wrapTable = DOM_Engine.create('div', 'glass overflow-x-auto rounded-[2rem] shadow-premium border border-white', {}, [
+                DOM_Engine.create('table', 'min-w-full', {}, [thead, DOM_Engine.create('tbody', 'bg-white/40', {}, trs)])
+            ]);
+
+            container.appendChild(DOM_Engine.create('div', 'bg-aurora min-h-screen p-2', {}, [headerSec, wrapTable]));
+        } else { sysShowToast(res.message, 'error'); }
     }).api_adminGetLiveLogs();
 }
 
-function buildUI_LiveTracking(logs) {
+// ==============================================================================
+// MODUL 2: ANOMALI & APPROVAL (DENGAN FITUR BULK APPROVE)
+// ==============================================================================
+let State_BulkApproval = []; // Array penyimpan ID Transaksi yang dicentang
+
+function renderWorkspace_Approval() {
+    DOM_Engine.clear('nav-workspace');
+    State_BulkApproval = []; 
+    const container = document.getElementById('nav-workspace');
+    
+    container.appendChild(DOM_Engine.create('div', 'flex flex-col items-center justify-center py-20 fade-in', {}, [
+        DOM_Engine.create('i', 'fa-solid fa-file-signature fa-spin text-4xl text-amber-500 mb-4'),
+        DOM_Engine.create('p', 'text-slate-500 font-medium tracking-wide', {}, ['Menarik data log perjalanan untuk di-review...'])
+    ]));
+
+    google.script.run.withSuccessHandler((res) => {
+        if (res.status === 'success') {
+            DOM_Engine.clear('nav-workspace');
+            
+            const headerSec = DOM_Engine.create('div', 'mb-6 fade-in', {}, [
+                DOM_Engine.create('h2', 'text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-3', {}, [
+                    DOM_Engine.create('div', 'p-2 bg-amber-100 rounded-xl', {}, [DOM_Engine.create('i', 'fa-solid fa-file-signature text-amber-600')]),
+                    'Anomali & Approval'
+                ]),
+                DOM_Engine.create('p', 'text-slate-500 text-sm mt-2 ml-14', {}, ['Tinjau log perjalanan dan setujui klaim UPD secara massal.'])
+            ]);
+
+            if (res.data.length === 0) {
+                container.appendChild(DOM_Engine.create('div', 'bg-aurora min-h-screen p-2', {}, [headerSec, DOM_Engine.create('div', 'glass text-center py-16 rounded-[2rem] border border-white', {}, [
+                    DOM_Engine.create('i', 'fa-solid fa-check-double text-5xl text-emerald-400 mb-4'),
+                    DOM_Engine.create('h3', 'text-lg font-bold text-slate-500', {}, ['Semua bersih! Tidak ada antrean Approval.'])
+                ])]));
+                return;
+            }
+
+            const bulkActionBar = DOM_Engine.create('div', 'bg-white border border-indigo-100 p-4 rounded-2xl mb-6 flex justify-between items-center shadow-sm fade-in-up', {}, [
+                DOM_Engine.create('div', 'flex items-center gap-3', {}, [
+                    DOM_Engine.create('div', 'w-10 h-10 bg-indigo-50 text-indigo-500 rounded-lg flex items-center justify-center text-lg', {}, [DOM_Engine.create('i', 'fa-solid fa-layer-group')]),
+                    DOM_Engine.create('span', 'font-bold text-indigo-600', {id: 'txt-selected-count'}, ['0 Dokumen Terpilih'])
+                ]),
+                DOM_Engine.create('button', 'px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl shadow-md transition-colors flex items-center gap-2 opacity-50 cursor-not-allowed', { 
+                    id: 'btn-bulk-approve', disabled: true, onClick: action_executeBulkApprove 
+                }, [DOM_Engine.create('i', 'fa-solid fa-check-double'), 'Approve Terpilih'])
+            ]);
+
+            const trs = res.data.map(log => {
+                let jamMasukUI, statusUI, rowBg = 'hover:bg-slate-50/50';
+                if (log.isAnomali) {
+                    rowBg = 'bg-rose-50/30 hover:bg-rose-50';
+                    jamMasukUI = DOM_Engine.create('div', 'flex items-center gap-2 text-rose-500', {}, [DOM_Engine.create('i', 'fa-solid fa-triangle-exclamation animate-pulse'), DOM_Engine.create('span', 'text-sm font-extrabold', {}, ['AUTO-CHECKOUT (23:59)'])]);
+                    statusUI = DOM_Engine.create('span', 'text-[10px] font-bold px-3 py-1.5 rounded-full bg-rose-100 text-rose-600 shadow-sm', {}, ['ANOMALI / SIDANG']);
+                } else {
+                    jamMasukUI = DOM_Engine.create('span', 'text-sm font-bold text-slate-700', {}, [log.waktuMasuk, ' WIB']);
+                    statusUI = DOM_Engine.create('span', 'text-[10px] font-bold px-3 py-1.5 rounded-full bg-slate-100 text-slate-600 shadow-sm', {}, [log.persetujuan]);
+                }
+
+                return DOM_Engine.create('tr', `${rowBg} transition-colors border-b border-slate-100`, {}, [
+                    DOM_Engine.create('td', 'px-5 py-4 text-center', {}, [DOM_Engine.create('input', 'chk-approve-item w-5 h-5 text-indigo-600 rounded border-slate-300 cursor-pointer', { type: 'checkbox', value: log.idTransaksi, onChange: (e) => toggleCheckbox(e.target.value, e.target.checked) })]),
+                    DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap', {}, [DOM_Engine.create('p', 'text-sm font-bold text-slate-800', {}, [log.nama]), DOM_Engine.create('p', 'text-[10px] font-bold text-slate-400 uppercase', {}, [log.nrpp])]),
+                    DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap text-sm font-bold text-slate-700', {}, [log.customer]),
+                    DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap text-sm text-slate-500 font-medium', {}, [log.waktuKeluar]),
+                    DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap', {}, [jamMasukUI]),
+                    DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap text-center', {}, [statusUI])
+                ]);
+            });
+
+            const thead = DOM_Engine.create('thead', 'bg-slate-50/80 border-b border-slate-200', {}, [
+                DOM_Engine.create('tr', '', {}, [DOM_Engine.create('th', 'px-5 py-4 text-center', {}, [DOM_Engine.create('input', 'w-5 h-5 cursor-pointer', { type: 'checkbox', onChange: (e) => toggleCheckAll(e.target.checked) })]), ...['Personel', 'Customer', 'Jam Keluar', 'Jam Masuk', 'Status'].map(h => DOM_Engine.create('th', 'px-5 py-4 text-left text-xs font-extrabold text-slate-500 uppercase tracking-widest', {}, [h]))])
+            ]);
+
+            container.appendChild(DOM_Engine.create('div', 'bg-aurora min-h-screen p-2', {}, [headerSec, bulkActionBar, DOM_Engine.create('div', 'glass overflow-x-auto rounded-[2rem] shadow-premium border border-white fade-in-up', {}, [DOM_Engine.create('table', 'min-w-full', {}, [thead, DOM_Engine.create('tbody', 'bg-white/40', {}, trs)])])]));
+        } else sysShowToast(res.message, 'error');
+    }).api_adminGetApprovalList();
+}
+
+// ==========================================================
+// FUNGSI SIDANG HRD (KOREKSI LOG PERJALANAN)
+// ==========================================================
+function action_openEditSidang(log) {
+    const btnCancel = DOM_Engine.create('button', 'w-full sm:w-auto px-5 py-2.5 text-sm font-bold text-slate-500 hover:bg-slate-100 rounded-xl transition-colors', { type: 'button', onClick: () => document.getElementById('modal-edit-sidang').remove() }, ['Batal']);
+    
+    const btnSave = DOM_Engine.create('button', 'w-full sm:w-auto px-5 py-2.5 text-sm font-bold text-white bg-amber-500 hover:bg-amber-600 rounded-xl shadow-md flex items-center justify-center gap-2 transition-all', { 
+        type: 'button', id: 'btn-sidang-save',
+        onClick: () => {
+            const outVal = document.getElementById('inp-sidang-out').value;
+            const inVal = document.getElementById('inp-sidang-in').value;
+            if(!outVal || !inVal) { sysShowToast("Waktu tidak boleh kosong!", "error"); return; }
+            action_executeSidangEdit(log, outVal, inVal);
+        }
+    }, [DOM_Engine.create('i', 'fa-solid fa-calculator'), 'Kalkulasi Ulang & Simpan']);
+
+    const formEdit = DOM_Engine.create('div', 'space-y-4 text-left px-6 py-4', {}, [
+        DOM_Engine.create('div', 'bg-slate-50 p-4 rounded-xl border border-slate-100 mb-2', {}, [
+            DOM_Engine.create('p', 'text-xs text-slate-500 font-bold', {}, ['TARGET KOREKSI:']),
+            DOM_Engine.create('p', 'text-sm font-extrabold text-slate-800', {}, [`${log.nama} (${log.nrpp}) - ${log.customer}`])
+        ]),
+        DOM_Engine.create('div', '', {}, [
+            DOM_Engine.create('label', 'block text-xs font-bold text-slate-600 mb-1', {}, ['Jam Keberangkatan']),
+            DOM_Engine.create('input', 'input-premium w-full bg-slate-50 px-4 py-2.5 text-sm', { type: 'datetime-local', id: 'inp-sidang-out', value: log.rawKeluar })
+        ]),
+        DOM_Engine.create('div', '', {}, [
+            DOM_Engine.create('label', 'block text-xs font-bold text-slate-600 mb-1', {}, ['Jam Kepulangan (Koreksi)']),
+            DOM_Engine.create('input', 'input-premium w-full bg-rose-50 border-rose-200 px-4 py-2.5 text-sm text-rose-700', { type: 'datetime-local', id: 'inp-sidang-in', value: log.rawMasuk })
+        ])
+    ]);
+
+    const modalContent = DOM_Engine.create('div', 'bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-100 text-center relative fade-in-up', {}, [
+        DOM_Engine.create('div', 'p-5 border-b border-slate-100 bg-amber-50/50 flex justify-between items-center', {}, [
+            DOM_Engine.create('h3', 'font-extrabold text-amber-600 text-lg flex items-center gap-2', {}, [DOM_Engine.create('i', 'fa-solid fa-gavel'), 'Sidang Koreksi Data']),
+            DOM_Engine.create('button', 'text-slate-400 hover:text-red-500', { type: 'button', onClick: () => document.getElementById('modal-edit-sidang').remove() }, [DOM_Engine.create('i', 'fa-solid fa-times')])
+        ]),
+        formEdit,
+        DOM_Engine.create('div', 'p-5 border-t bg-slate-50 flex flex-col sm:flex-row justify-end gap-3', {}, [btnCancel, btnSave]) 
+    ]);
+
+    document.body.appendChild(DOM_Engine.create('div', 'fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4 fade-in', { id: 'modal-edit-sidang' }, [modalContent]));
+}
+
+function action_executeSidangEdit(log, outVal, inVal) {
+    const btn = document.getElementById('btn-sidang-save');
+    btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Menghitung...'; btn.disabled = true;
+
+    const payload = {
+        idTransaksi: log.idTransaksi, sheetName: log.sheetName,
+        nrpp: log.nrpp, jabatan: log.jabatan, golongan: log.golongan,
+        wKeluar: outVal, wMasuk: inVal
+    };
+
+    google.script.run.withSuccessHandler((res) => {
+        if(res.status === 'success') {
+            sysShowToast(res.message, 'success');
+            document.getElementById('modal-edit-sidang').remove();
+            renderWorkspace_Approval(); // Refresh otomatis
+        } else {
+            sysShowToast(res.message, 'error');
+            btn.innerHTML = '<i class="fa-solid fa-calculator"></i> Kalkulasi Ulang & Simpan'; btn.disabled = false;
+        }
+    }).api_adminEditLog(payload);
+}
+
+function buildUI_ApprovalDashboard(logs) {
     DOM_Engine.clear('nav-workspace');
     const container = document.getElementById('nav-workspace');
 
-    const headerSec = DOM_Engine.create('div', 'mb-8 fade-in flex justify-between items-end', {}, [
+    const headerSec = DOM_Engine.create('div', 'mb-6 fade-in flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4', {}, [
         DOM_Engine.create('div', '', {}, [
             DOM_Engine.create('h2', 'text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-3', {}, [
-                DOM_Engine.create('div', 'relative flex items-center justify-center w-8 h-8', {}, [
-                    DOM_Engine.create('span', 'animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75'),
-                    DOM_Engine.create('i', 'relative fa-solid fa-satellite-dish text-rose-500 text-xl')
-                ]),
-                'Global Live Tracking'
+                DOM_Engine.create('div', 'p-2 bg-amber-100 rounded-xl', {}, [DOM_Engine.create('i', 'fa-solid fa-file-signature text-amber-600')]),
+                'Anomali & Approval'
             ]),
-            DOM_Engine.create('p', 'text-slate-500 text-sm mt-1 ml-11', {}, ['Radar aktivitas Keberangkatan Hari Ini (WIB).'])
+            DOM_Engine.create('p', 'text-slate-500 text-sm mt-2 ml-14', {}, ['Tinjau log perjalanan dan setujui klaim UPD secara massal.'])
         ]),
-        DOM_Engine.create('button', 'bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 px-4 py-2 rounded-xl font-bold text-sm shadow-sm flex items-center gap-2 transition-all', { onClick: renderWorkspace_LogSistem }, [DOM_Engine.create('i', 'fa-solid fa-rotate-right'), 'Refresh Radar'])
+        DOM_Engine.create('button', 'bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 px-4 py-2 rounded-xl font-bold text-sm shadow-sm flex items-center gap-2 transition-all', { onClick: renderWorkspace_Approval }, [DOM_Engine.create('i', 'fa-solid fa-rotate-right'), 'Refresh Data'])
     ]);
 
     if (logs.length === 0) {
-        container.appendChild(DOM_Engine.create('div', 'bg-aurora min-h-screen p-2', {}, [headerSec, DOM_Engine.create('div', 'glass text-center py-16 rounded-[2rem] border border-white', {}, [
-            DOM_Engine.create('i', 'fa-solid fa-mug-hot text-5xl text-slate-300 mb-4'),
-            DOM_Engine.create('h3', 'text-lg font-bold text-slate-500', {}, ['Sinyal Kosong. Belum ada aktivitas keberangkatan hari ini.'])
+        container.appendChild(DOM_Engine.create('div', 'bg-aurora min-h-screen p-2', {}, [headerSec, DOM_Engine.create('div', 'glass text-center py-16 rounded-[2rem] border border-white fade-in', {}, [
+            DOM_Engine.create('i', 'fa-solid fa-check-double text-5xl text-emerald-400 mb-4'),
+            DOM_Engine.create('h3', 'text-lg font-bold text-slate-500', {}, ['Semua bersih! Tidak ada antrean Approval.'])
         ])]));
         return;
     }
 
-    const trs = logs.map(log => {
-        const isJalan = log.status.toUpperCase() === "SEDANG JALAN";
-        
-        const statusBadge = DOM_Engine.create('div', `inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${isJalan ? 'bg-rose-50 text-rose-600 border-rose-200' : 'bg-emerald-50 text-emerald-600 border-emerald-200'}`, {}, [
-            DOM_Engine.create('span', `w-2 h-2 rounded-full ${isJalan ? 'bg-rose-500 animate-pulse' : 'bg-emerald-500'}`), isJalan ? 'DI PERJALANAN' : 'SELESAI'
-        ]);
+    // Top Action Bar untuk Bulk Approve
+    const bulkActionBar = DOM_Engine.create('div', 'bg-white border border-indigo-100 p-4 rounded-2xl mb-6 flex justify-between items-center shadow-sm fade-in-up', {}, [
+        DOM_Engine.create('div', 'flex items-center gap-3', {}, [
+            DOM_Engine.create('div', 'w-10 h-10 bg-indigo-50 text-indigo-500 rounded-lg flex items-center justify-center text-lg', {}, [DOM_Engine.create('i', 'fa-solid fa-layer-group')]),
+            DOM_Engine.create('span', 'font-bold text-indigo-600', {id: 'txt-selected-count'}, ['0 Dokumen Terpilih'])
+        ]),
+        DOM_Engine.create('button', 'px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl shadow-md transition-colors flex items-center gap-2 opacity-50 cursor-not-allowed', { 
+            id: 'btn-bulk-approve', disabled: true, 
+            onClick: action_executeBulkApprove 
+        }, [DOM_Engine.create('i', 'fa-solid fa-check-double'), 'Approve Terpilih'])
+    ]);
 
-        return DOM_Engine.create('tr', 'hover:bg-slate-50/50 transition-colors border-b border-slate-100', {}, [
+    // Handle Individual Checkbox
+    const toggleCheckbox = (idTransaksi, checked) => {
+        if (checked) State_BulkApproval.push(idTransaksi);
+        else State_BulkApproval = State_BulkApproval.filter(id => id !== idTransaksi);
+        const count = State_BulkApproval.length;
+        document.getElementById('txt-selected-count').innerText = `${count} Dokumen Terpilih`;
+        const btn = document.getElementById('btn-bulk-approve');
+        if (count > 0) { btn.disabled = false; btn.classList.remove('opacity-50', 'cursor-not-allowed'); }
+        else { btn.disabled = true; btn.classList.add('opacity-50', 'cursor-not-allowed'); }
+    };
+
+    // Handle Check All
+    const toggleCheckAll = (checked) => {
+        State_BulkApproval = [];
+        document.querySelectorAll('.chk-approve-item').forEach(chk => {
+            chk.checked = checked;
+            if (checked) State_BulkApproval.push(chk.value);
+        });
+        toggleCheckbox(null, false);
+    };
+
+    const trs = logs.map(log => {
+        let jamMasukUI, statusUI, rowBg = 'hover:bg-slate-50/50';
+
+        if (log.isAnomali) {
+            rowBg = 'bg-rose-50/30 hover:bg-rose-50';
+            jamMasukUI = DOM_Engine.create('div', 'flex items-center gap-2 text-rose-500', {}, [
+                DOM_Engine.create('i', 'fa-solid fa-triangle-exclamation animate-pulse'),
+                DOM_Engine.create('span', 'text-sm font-extrabold', {}, ['AUTO-CHECKOUT (23:59)'])
+            ]);
+            statusUI = DOM_Engine.create('span', 'text-[10px] font-bold px-3 py-1.5 rounded-full bg-rose-100 text-rose-600 shadow-sm', {}, ['ANOMALI / SIDANG']);
+        } else {
+            jamMasukUI = DOM_Engine.create('span', 'text-sm font-bold text-slate-700', {}, [log.waktuMasuk, ' WIB']);
+            statusUI = DOM_Engine.create('span', 'text-[10px] font-bold px-3 py-1.5 rounded-full bg-slate-100 text-slate-600 shadow-sm', {}, [log.persetujuan]);
+        }
+
+        // --- TOMBOL EDIT (IKON PENSIL) ---
+        const btnEdit = DOM_Engine.create('button', 'w-9 h-9 bg-amber-100 text-amber-600 hover:bg-amber-500 hover:text-white rounded-xl flex items-center justify-center transition-all shadow-sm border border-amber-200 hover:border-amber-500', {
+            title: 'Koreksi Data (Sidang HRD)',
+            onClick: () => action_openEditSidang(log)
+        }, [DOM_Engine.create('i', 'fa-solid fa-pen-to-square')]);
+
+        return DOM_Engine.create('tr', `${rowBg} transition-colors border-b border-slate-100`, {}, [
+            DOM_Engine.create('td', 'px-5 py-4 text-center', {}, [
+                DOM_Engine.create('input', 'chk-approve-item w-5 h-5 text-indigo-600 rounded border-slate-300 cursor-pointer', { 
+                    type: 'checkbox', value: log.idTransaksi, onChange: (e) => toggleCheckbox(e.target.value, e.target.checked) 
+                })
+            ]),
             DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap', {}, [
                 DOM_Engine.create('p', 'text-sm font-extrabold text-slate-800', {}, [log.nama]),
-                DOM_Engine.create('p', 'text-[10px] font-bold text-slate-400 uppercase tracking-wider', {}, [log.nrpp + " • " + log.divisi])
-            ]),
-            DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap', {}, [
-                DOM_Engine.create('div', 'flex items-center gap-2', {}, [DOM_Engine.create('i', 'fa-regular fa-clock text-indigo-400'), DOM_Engine.create('span', 'text-sm font-bold text-slate-700', {}, [log.waktuKeluar, ' WIB'])])
+                DOM_Engine.create('p', 'text-[10px] font-bold text-slate-400 uppercase tracking-wider', {}, [log.nrpp])
             ]),
             DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap text-sm font-bold text-slate-700', {}, [log.customer]),
-            DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap', {}, [statusBadge])
+            DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap text-sm text-slate-500 font-medium', {}, [log.waktuKeluar]),
+            DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap', {}, [jamMasukUI]),
+            DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap text-center', {}, [statusUI]),
+            DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap text-center', {}, [btnEdit]) // Kolom AKSI
         ]);
     });
 
     const thead = DOM_Engine.create('thead', 'bg-slate-50/80 border-b border-slate-200', {}, [
-        DOM_Engine.create('tr', '', {}, ['Personel & Divisi', 'Waktu Keluar', 'Target Customer', 'Live Status'].map(h => DOM_Engine.create('th', 'px-5 py-4 text-left text-xs font-extrabold text-slate-500 uppercase tracking-widest', {}, [h])))
+        DOM_Engine.create('tr', '', {}, [
+            DOM_Engine.create('th', 'px-5 py-4 text-center', {}, [
+                DOM_Engine.create('input', 'w-5 h-5 cursor-pointer', { type: 'checkbox', onChange: (e) => toggleCheckAll(e.target.checked) })
+            ]),
+            ...['Personel', 'Customer', 'Jam Keluar', 'Jam Masuk', 'Status', 'Aksi'].map(h => 
+                DOM_Engine.create('th', 'px-5 py-4 text-left text-xs font-extrabold text-slate-500 uppercase tracking-widest', {}, [h])
+            )
+        ])
     ]);
 
-    const wrapTable = DOM_Engine.create('div', 'glass overflow-x-auto rounded-[2rem] shadow-premium border border-white', {}, [
-        DOM_Engine.create('table', 'min-w-full', {}, [thead, DOM_Engine.create('tbody', 'bg-white/40', {}, trs)])
-    ]);
+    container.appendChild(DOM_Engine.create('div', 'bg-aurora min-h-screen p-2', {}, [
+        headerSec, bulkActionBar, 
+        DOM_Engine.create('div', 'glass overflow-x-auto rounded-[2rem] shadow-premium border border-white fade-in-up', {}, [
+            DOM_Engine.create('table', 'min-w-full', {}, [thead, DOM_Engine.create('tbody', 'bg-white/40', {}, trs)])
+        ])
+    ]));
+}
 
-    container.appendChild(DOM_Engine.create('div', 'bg-aurora min-h-screen p-2', {}, [headerSec, wrapTable]));
+function action_executeBulkApprove() {
+    if (State_BulkApproval.length === 0) return;
+    
+    const btn = document.getElementById('btn-bulk-approve');
+    btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Memproses...';
+    btn.disabled = true;
+
+    google.script.run.withSuccessHandler((res) => {
+        if (res.status === 'success') {
+            sysShowToast(res.message, 'success');
+            renderWorkspace_Approval(); // Refresh otomatis
+        } else {
+            sysShowToast(res.message, 'error');
+            btn.innerHTML = '<i class="fa-solid fa-check-double"></i> Approve Terpilih';
+            btn.disabled = false;
+        }
+    }).api_adminBulkApprove(State_BulkApproval);
 }
 
 // ==============================================================================
@@ -1370,23 +1648,56 @@ function buildUI_LogPribadi(groupedData) {
         const trs = logs.map(l => {
             const isSelesai = l.status.toUpperCase() === "SELESAI";
             const isKlaim = l.klaim.toUpperCase() === "SUDAH KLAIM";
+            const isAnomali = l.waktuMasuk && l.waktuMasuk.includes("23:59");
+
+            let colDurasi, colNominal, colKlaim, colPersetujuan;
+
+            // --- LOGIKA KOLOM STATUS PERSETUJUAN (KOLOM U) ---
+            let statusPersetujuan = l.persetujuan ? l.persetujuan.toUpperCase() : "PENDING";
+            let badgePersetujuanColor = 'bg-slate-100 text-slate-500'; 
             
+            if (isAnomali) {
+                statusPersetujuan = 'SIDANG';
+                badgePersetujuanColor = 'bg-rose-100 text-rose-600';
+            } else if (statusPersetujuan === 'APPROVED') {
+                badgePersetujuanColor = 'bg-emerald-100 text-emerald-600';
+            } else if (statusPersetujuan.includes('PENDING')) {
+                badgePersetujuanColor = 'bg-amber-100 text-amber-600';
+            }
+
+            colPersetujuan = DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap text-center', {}, [
+                DOM_Engine.create('span', `text-[10px] font-bold px-3 py-1.5 rounded-full ${badgePersetujuanColor} shadow-sm border border-white`, {}, [statusPersetujuan])
+            ]);
+
+            if (isAnomali) {
+                colDurasi = DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap text-center', {}, [
+                    DOM_Engine.create('span', 'animate-pulse bg-red-500 text-white text-[10px] font-bold px-2.5 py-1.5 rounded-lg shadow-sm', {}, [DOM_Engine.create('i', 'fa-solid fa-triangle-exclamation'), ' TIDAK SCAN MASUK'])
+                ]);
+                colNominal = DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap text-sm font-extrabold text-rose-500 text-right', {}, ['DITAHAN']);
+                colKlaim = DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap text-center', {}, [
+                    DOM_Engine.create('span', 'text-[10px] font-bold px-3 py-1.5 rounded-full bg-rose-50 border border-rose-200 text-rose-600', {}, ['TERKUNCI'])
+                ]);
+            } else {
+                colDurasi = DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap text-sm font-bold text-slate-700 text-center', {}, [l.durasi + ' Jam']);
+                colNominal = DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap text-sm font-extrabold text-emerald-600 text-right', {}, ['Rp ' + l.nominal.toLocaleString('id-ID')]);
+                colKlaim = DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap text-center', {}, [
+                    DOM_Engine.create('span', `text-[10px] font-bold px-3 py-1.5 rounded-full ${isKlaim ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-500'}`, {}, [l.klaim])
+                ]);
+            }
+
             return DOM_Engine.create('tr', 'hover:bg-slate-50 transition-colors border-b border-slate-100', {}, [
                 DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap', {}, [DOM_Engine.create('p', 'text-sm font-bold text-slate-800', {}, [l.customer])]),
                 DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap text-sm text-slate-500 font-medium', {}, [l.waktuKeluar]),
-                DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap text-sm font-bold text-slate-700 text-center', {}, [l.durasi + ' Jam']),
-                DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap text-sm font-extrabold text-emerald-600 text-right', {}, ['Rp ' + l.nominal.toLocaleString('id-ID')]),
+                colDurasi, colNominal,
                 DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap text-center', {}, [
                     DOM_Engine.create('span', `text-[10px] font-bold px-3 py-1.5 rounded-full ${isSelesai ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`, {}, [l.status])
                 ]),
-                DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap text-center', {}, [
-                    DOM_Engine.create('span', `text-[10px] font-bold px-3 py-1.5 rounded-full ${isKlaim ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-500'}`, {}, [l.klaim])
-                ])
+                colPersetujuan, colKlaim
             ]);
         });
 
         const thead = DOM_Engine.create('thead', 'bg-slate-50 border-b border-slate-200', {}, [
-            DOM_Engine.create('tr', '', {}, ['Customer Tujuan', 'Waktu Keluar', 'Durasi', 'Nominal UPD', 'Status Jalan', 'Status Klaim'].map(h => DOM_Engine.create('th', 'px-5 py-4 text-left text-xs font-extrabold text-slate-400 uppercase tracking-widest', {}, [h])))
+            DOM_Engine.create('tr', '', {}, ['Customer Tujuan', 'Waktu Keluar', 'Durasi', 'Nominal UPD', 'Status Jalan', 'Status Persetujuan', 'Status Klaim'].map(h => DOM_Engine.create('th', 'px-5 py-4 text-left text-xs font-extrabold text-slate-400 uppercase tracking-widest', {}, [h])))
         ]);
 
         // [UPDATE KILLER UI]: Tombol Cetak PDF di dalam Header Hitam Premium
@@ -1580,7 +1891,7 @@ function execute_downloadDeklarasiPDF(stNumber, logs) {
         .table-kop td { border: 1px solid #000; padding: 1px 4px; height: 14px; vertical-align: middle; white-space: nowrap; font-size: 8pt; }
         .table-data td, .table-data th { border: 1px solid #000; padding: 1px 4px; height: 14px; vertical-align: middle; font-size: 8pt; }
         .table-data th { text-align: center; font-weight: normal; }
-        .table-ttd { width: 100%; margin-top: 8px; font-size: 8pt; page-break-inside: avoid; }
+        .table-ttd { width: 60%; margin-top: 8px; font-size: 8pt; page-break-inside: avoid; }
         .table-ttd th, .table-ttd td { border: 1px solid #000; padding: 2px; text-align: center; vertical-align: top; }
         .table-ttd th { font-weight: normal; }
         .text-center { text-align: center; } .text-right { text-align: right; } .text-left { text-align: left; }
@@ -1669,10 +1980,10 @@ function execute_downloadDeklarasiPDF(stNumber, logs) {
           <th style="width: 25%">HRGA Div</th>
         </tr>
         <tr>
-          <td style="height: 65px; vertical-align: bottom">${SysState.user.nama}</td>
-          <td style="height: 65px"></td>
-          <td style="height: 65px"></td>
-          <td style="height: 65px"></td>
+          <td style="height: 70px; vertical-align: bottom">${SysState.user.nama}</td>
+          <td style="height: 70px"></td>
+          <td style="height: 70px"></td>
+          <td style="height: 70px"></td>
         </tr>
       </table>
     `;
