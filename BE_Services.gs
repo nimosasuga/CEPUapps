@@ -21,7 +21,6 @@ function include(filename) {
 
 function api_getInitFormData(user) {
   try {
-    // 1. Tarik Data Status Absensi dengan Smart Dual-Lookup
     const dbMaster = SpreadsheetApp.openById(DB_MASTER_ID);
     const sheetStatus = dbMaster.getSheetByName("Master_Status_Absensi");
     const dataStatus = sheetStatus.getDataRange().getValues();
@@ -32,40 +31,58 @@ function api_getInitFormData(user) {
 
     for (let i = 1; i < dataStatus.length; i++) {
       let filterArea = dataStatus[i][2] ? dataStatus[i][2].toString().toUpperCase() : "";
-      
-      // [UPDATE]: Mengecek apakah kolom Lokasi di Master mengandung Lokasi user ATAU Jabatan user
       if (filterArea.includes(userLokasi) || filterArea.includes(userJabatan)) {
         options.push({ code: dataStatus[i][0], desc: dataStatus[i][1] });
       }
     }
 
-    // 2. Tarik Data Riwayat ST khusus NRPP tersebut
-    const dbUpd = SpreadsheetApp.openById(DB_UPD_ID);
-    let targetSheetName = "Log_" + user.lokasi.trim();
-    let sheetLog = dbUpd.getSheetByName(targetSheetName);
+    // [UPDATE FIX]: Smart Routing DB Sales vs UPD untuk History & Active Trip
+    const isSales = (userLokasi === "SALES" || userJabatan === "SALES");
+    const dbApp = isSales ? SpreadsheetApp.openById(DB_SALES_ID) : SpreadsheetApp.openById(DB_UPD_ID);
+    let targetSheetName = isSales ? "Log_Sales" : "Log_" + user.lokasi.trim();
+    let sheetLog = dbApp.getSheetByName(targetSheetName);
     
     let history = [];
+    let activeTrip = null; // [NEW]: Penampung Trip Aktif
+
     if (sheetLog) {
       const dataLog = sheetLog.getDataRange().getValues();
       let stSet = new Set();
       
-      // Looping dari bawah (data terbaru) ke atas
       for (let i = dataLog.length - 1; i >= 1; i--) {
         if (dataLog[i][1].toString() === user.nrpp.toString()) { 
-          let noST = dataLog[i][8] ? dataLog[i][8].toString().trim() : ""; 
+          
+          // [NEW PULL ACTIVE STATE]: Cek apakah ada trip gantung (Sedang Jalan)
+          let statusPerjalanan = isSales ? dataLog[i][15] : dataLog[i][17];
+          if (!activeTrip && statusPerjalanan === "SEDANG JALAN") {
+              let rawTime = dataLog[i][isSales ? 10 : 11];
+              let waktuFormat = (rawTime instanceof Date) ? Utilities.formatDate(rawTime, "Asia/Jakarta", "dd/MM/yyyy HH:mm:ss") : rawTime.toString();
+              
+              activeTrip = {
+                  idTransaksi: dataLog[i][0].toString(),
+                  waktuKeluar: waktuFormat,
+                  lokasi: dataLog[i][isSales ? 9 : 10].toString(),
+                  customer: dataLog[i][isSales ? 8 : 9].toString(),
+                  statusAbsensi: "SEDANG JALAN" 
+              };
+          }
+
+          let noSTRaw = isSales ? "" : dataLog[i][8];
+          let noST = noSTRaw ? String(noSTRaw).replace(/^'/, '').trim() : ""; 
+          
           if (noST !== "" && !stSet.has(noST)) {
             stSet.add(noST);
             history.push({
               noST: noST,
-              customer: dataLog[i][9] ? dataLog[i][9].toString() : "", 
-              lokasi: dataLog[i][10] ? dataLog[i][10].toString() : ""   
+              customer: dataLog[i][isSales ? 8 : 9] ? dataLog[i][isSales ? 8 : 9].toString() : "", 
+              lokasi: dataLog[i][isSales ? 9 : 10] ? dataLog[i][isSales ? 9 : 10].toString() : ""   
             });
           }
         }
       }
     }
 
-    return { status: "success", data: { statusOptions: options, historyST: history } };
+    return { status: "success", data: { statusOptions: options, historyST: history, activeTrip: activeTrip } };
   } catch (error) {
     return { status: "error", message: error.toString() };
   }
@@ -180,20 +197,21 @@ function api_submitPerjalananDinas(payload, user) {
     const y_wib = Utilities.formatDate(timestamp, "Asia/Jakarta", "yyyy");
 
     // ==========================================================
-    // PROTOKOL ODOC (One-Day-One-Checkin) - THE ULTIMATE TRX-EPOCH VALIDATOR
+    // PROTOKOL ODOC (One-Day-One-Checkin) - DYNAMIC COLUMN VALIDATOR
     // ==========================================================
     if (user.jabatan !== "Super Admin" && user.jabatan !== "Administrator") {
         const dataLog = sheet.getDataRange().getValues();
         
-        let idIndex = 0;
         let nrppIndex = 1;
+        let waktuKeluarIndex = isSales ? 10 : 11; // Default Index
         
         if (dataLog.length > 0) {
             let header = dataLog[0];
             for(let c = 0; c < header.length; c++) {
                 let colName = header[c].toString().toUpperCase().trim();
-                if(colName === "ID_TRANSAKSI" || colName === "ID") idIndex = c;
                 if(colName === "NRPP") nrppIndex = c;
+                // [UPDATE]: Mencari Index Kolom Waktu Keluar secara dinamis
+                if(colName === "WAKTU_KELUAR" || colName === "WAKTU KELUAR") waktuKeluarIndex = c;
             }
         }
 
@@ -208,37 +226,34 @@ function api_submitPerjalananDinas(payload, user) {
             
             if (isUserMatch) {
                 let isAlreadyClockedIn = false;
-                let cellID = String(dataLog[i][idIndex]).trim();
+                // [KUNCI ABSOLUT]: Ekstrak Waktu Langsung dari Kolom Visual (Agar bisa dites Admin)
+                let rawTime = dataLog[i][waktuKeluarIndex];
                 
-                // [KUNCI ABSOLUT]: Ekstrak Waktu Langsung dari ID Transaksi (TRX-17...)
-                // Mengabaikan kolom tanggal Google Sheets sepenuhnya agar kebal Timezone Server.
-                if (cellID.startsWith("TRX-")) {
-                    let epochStr = cellID.replace("TRX-", "");
-                    let epochNum = parseInt(epochStr, 10);
+                if (rawTime) {
+                    let logDate = (rawTime instanceof Date) ? rawTime : new Date(rawTime.toString() + " +0700");
                     
-                    if (!isNaN(epochNum)) {
-                        let logDate = new Date(epochNum);
+                    if (!isNaN(logDate.getTime()) && logDate.getFullYear() > 2000) {
                         let r_y = Utilities.formatDate(logDate, "Asia/Jakarta", "yyyy");
                         let r_m = Utilities.formatDate(logDate, "Asia/Jakarta", "MM");
                         let r_d = Utilities.formatDate(logDate, "Asia/Jakarta", "dd");
                         
+                        // Jika ada data dengan tanggal yang sama seperti hari ini, BLOKIR.
                         if (r_y === y_wib && r_m === m_wib && r_d === d_wib) {
                             isAlreadyClockedIn = true;
                         }
-                    }
-                } else {
-                    // Fallback Plan: String Scanner jika ID rusak (Sangat jarang terjadi)
-                    let timeIndex = isSales ? 10 : 11;
-                    let fallbackDate = String(dataLog[i][timeIndex]);
-                    let d_nz = parseInt(d_wib, 10).toString();
-                    let m_nz = parseInt(m_wib, 10).toString();
-                    const checkFormats = [
-                        `${y_wib}/${m_wib}/${d_wib}`, `${d_wib}/${m_wib}/${y_wib}`,
-                        `${y_wib}-${m_wib}-${d_wib}`, `${d_wib}-${m_wib}-${y_wib}`,
-                        `${d_nz}/${m_nz}/${y_wib}`, `${m_nz}/${d_nz}/${y_wib}`, `${y_wib}/${m_nz}/${d_nz}`
-                    ];
-                    if (checkFormats.some(fmt => fallbackDate.includes(fmt))) {
-                        isAlreadyClockedIn = true;
+                    } else if (typeof rawTime === "string" || typeof rawTime === "number") {
+                        // Fallback Plan: String Scanner
+                        let timeStr = String(rawTime);
+                        let d_nz = parseInt(d_wib, 10).toString();
+                        let m_nz = parseInt(m_wib, 10).toString();
+                        const checkFormats = [
+                            `${y_wib}/${m_wib}/${d_wib}`, `${d_wib}/${m_wib}/${y_wib}`,
+                            `${y_wib}-${m_wib}-${d_wib}`, `${d_wib}-${m_wib}-${y_wib}`,
+                            `${d_nz}/${m_nz}/${y_wib}`, `${m_nz}/${d_nz}/${y_wib}`, `${y_wib}/${m_nz}/${d_nz}`
+                        ];
+                        if (checkFormats.some(fmt => timeStr.includes(fmt))) {
+                            isAlreadyClockedIn = true;
+                        }
                     }
                 }
 
@@ -262,7 +277,7 @@ function api_submitPerjalananDinas(payload, user) {
     } else {
         rowData = [
           idTransaksi, user.nrpp, user.nama, user.jabatan, user.golongan, user.statusKaryawan, user.departemen, user.lokasi, 
-          payload.noST, payload.customer, payload.lokasi, timeToSave, payload.kordinat, "", "", "", "", "SEDANG JALAN", "BELUM KLAIM", ""
+          ("'" + payload.noST), payload.customer, payload.lokasi, timeToSave, payload.kordinat, "", "", "", "", "SEDANG JALAN", "BELUM KLAIM", ""
         ];
     }
     
@@ -335,7 +350,6 @@ function api_submitPerjalananDinas(payload, user) {
 function api_submitPulangDinas(payload, user) {
   try {
     if (!user.lokasi) throw new Error("Data Lokasi Karyawan kosong!");
-    
     const userLokasiUpper = user.lokasi.toString().trim().toUpperCase();
     const isSales = (userLokasiUpper === "SALES" || user.jabatan.toString().trim().toUpperCase() === "SALES");
     
@@ -353,8 +367,16 @@ function api_submitPulangDinas(payload, user) {
       if (data[i][0].toString() === payload.idTransaksi) {
         targetRow = i + 1;
         let rawKeluar = data[i][isSales ? 10 : 11]; 
+        
         // [UPDATE BUG FIX] Memaksa JavaScript membaca String sebagai Zona Waktu Jakarta (+0700)
         waktuKeluar = (rawKeluar instanceof Date) ? rawKeluar : new Date(rawKeluar.toString() + " +0700");
+        
+        // [KILLER BUG FIX]: Koreksi jika Admin edit jam manual di G-Sheets (Tahun menjadi 1899)
+        if (waktuKeluar.getFullYear() < 2000) {
+            const today = new Date();
+            waktuKeluar.setFullYear(today.getFullYear(), today.getMonth(), today.getDate());
+        }
+        
         break;
       }
     }
@@ -362,8 +384,8 @@ function api_submitPulangDinas(payload, user) {
     if (targetRow === -1) throw new Error("ID Transaksi tidak ditemukan.");
 
     const waktuMasuk = new Date();
-    // [UPDATE BUG FIX] Format string UI dengan WIB lock
     const timeMasukToSave = Utilities.formatDate(waktuMasuk, "Asia/Jakarta", "yyyy/MM/dd HH:mm:ss");
+    
     const diffMs = waktuMasuk - waktuKeluar;
     const durasiJam = diffMs / (1000 * 60 * 60);
 
@@ -373,12 +395,14 @@ function api_submitPulangDinas(payload, user) {
         const dbMaster = SpreadsheetApp.openById(DB_MASTER_ID);
         const masterUPD = dbMaster.getSheetByName("Master_UPD").getDataRange().getValues();
         let baseUPD = 0, uangMakan = 0, mknSiangLibur = 0, lainKerja = 0, lainLibur = 0;
+        
         let keyJabatan = user.jabatan ? user.jabatan.toString().trim().toUpperCase() : "";
         let keyGolongan = user.golongan ? user.golongan.toString().trim().toUpperCase() : "";
 
         for (let i = 1; i < masterUPD.length; i++) {
           let dbJabatan = masterUPD[i][0] ? masterUPD[i][0].toString().trim().toUpperCase() : "";
           let dbGolongan = masterUPD[i][1] ? masterUPD[i][1].toString().trim().toUpperCase() : "";
+
           if (dbJabatan === keyJabatan && dbGolongan === keyGolongan) {
             baseUPD = (durasiJam >= 8) ? parseFloat(masterUPD[i][2] || 0) : parseFloat(masterUPD[i][3] || 0);
             uangMakan = parseFloat(masterUPD[i][4] || 0);
@@ -388,6 +412,7 @@ function api_submitPulangDinas(payload, user) {
             break;
           }
         }
+
         const isWeekend = (waktuMasuk.getDay() === 0 || waktuMasuk.getDay() === 6);
         if (isWeekend) nominalUPD = baseUPD + mknSiangLibur + uangMakan + lainLibur;
         else nominalUPD = baseUPD + uangMakan + lainKerja;
@@ -419,7 +444,7 @@ function api_submitPulangDinas(payload, user) {
         const timeStr = Utilities.formatDate(waktuMasuk, "Asia/Jakarta", "HH:mm");
         const dataRekap = rekapSheet.getDataRange().getValues();
         let tRow = -1; let tCol = -1;
-
+        
         for (let r = 1; r < dataRekap.length; r++) {
           if (dataRekap[r][0].toString() === user.nrpp.toString()) { tRow = r + 1; break; }
         }
@@ -431,7 +456,7 @@ function api_submitPulangDinas(payload, user) {
         }
 
         if (tRow !== -1 && tCol !== -1) {
-          rekapSheet.getRange(tRow, tCol + 1).setValue(timeStr); 
+          rekapSheet.getRange(tRow, tCol + 1).setValue(timeStr);
           rekapSheet.getRange(tRow, tCol + 3).setValue(durasiJam.toFixed(2)); 
         }
       }
@@ -677,24 +702,44 @@ function api_getLogPribadi(user) {
     const dbUpd = SpreadsheetApp.openById(DB_UPD_ID);
     let targetSheetName = "Log_" + user.lokasi.trim();
     let sheet = dbUpd.getSheetByName(targetSheetName);
-    if(!sheet) return { status: "success", data: {} }; 
-
+    if(!sheet) return { status: "success", data: {} };
     const data = sheet.getDataRange().getValues();
     if(data.length <= 1) return { status: "success", data: {} };
+
+    // [MESIN BARU]: Tarik Master UPD untuk breakdown otomatis di PDF
+    const dbMaster = SpreadsheetApp.openById(DB_MASTER_ID);
+    const masterUPD = dbMaster.getSheetByName("Master_UPD").getDataRange().getValues();
+    let upd_ge8 = 0, upd_lt8 = 0, uangMakan = 0, mknSiangLibur = 0, lainKerja = 0, lainLibur = 0;
+    let keyJabatan = user.jabatan ? user.jabatan.toString().trim().toUpperCase() : "";
+    let keyGolongan = user.golongan ? user.golongan.toString().trim().toUpperCase() : "";
+
+    for (let i = 1; i < masterUPD.length; i++) {
+      let dbJab = masterUPD[i][0] ? masterUPD[i][0].toString().trim().toUpperCase() : "";
+      let dbGol = masterUPD[i][1] ? masterUPD[i][1].toString().trim().toUpperCase() : "";
+      if (dbJab === keyJabatan && dbGol === keyGolongan) {
+        upd_ge8 = parseFloat(masterUPD[i][2] || 0);
+        upd_lt8 = parseFloat(masterUPD[i][3] || 0);
+        uangMakan = parseFloat(masterUPD[i][4] || 0);
+        mknSiangLibur = parseFloat(masterUPD[i][5] || 0);
+        lainKerja = parseFloat(masterUPD[i][6] || 0);
+        lainLibur = parseFloat(masterUPD[i][7] || 0);
+        break;
+      }
+    }
 
     const headers = data[0].map(h => h.toString().toUpperCase().trim());
     const iNoST = headers.indexOf("NO_ST");
     const iCust = headers.indexOf("CUSTOMER");
-    const iLokasi = headers.indexOf("LOKASI"); // [UPDATE] Kolom Lokasi
+    const iLokasi = headers.lastIndexOf("LOKASI"); // [FIX]: Pastikan index 10 (Lokasi Customer)
+    
     const iWaktuKeluar = headers.indexOf("WAKTU_KELUAR") !== -1 ? headers.indexOf("WAKTU_KELUAR") : headers.indexOf("WAKTU KELUAR");
-    const iWaktuMasuk = headers.indexOf("WAKTU_MASUK") !== -1 ? headers.indexOf("WAKTU_MASUK") : headers.indexOf("WAKTU MASUK"); // [UPDATE] Kolom Waktu Masuk
+    const iWaktuMasuk = headers.indexOf("WAKTU_MASUK") !== -1 ? headers.indexOf("WAKTU_MASUK") : headers.indexOf("WAKTU MASUK");
     const iDurasi = headers.indexOf("DURASI_JAM") !== -1 ? headers.indexOf("DURASI_JAM") : headers.indexOf("DURASI JAM");
     const iNominal = headers.indexOf("NOMINAL_UPD") !== -1 ? headers.indexOf("NOMINAL_UPD") : headers.indexOf("NOMINAL UPD");
     const iStatus = headers.indexOf("STATUS_PERJALANAN") !== -1 ? headers.indexOf("STATUS_PERJALANAN") : headers.indexOf("STATUS PERJALANAN");
     const iKlaim = headers.indexOf("STATUS_KLAIM") !== -1 ? headers.indexOf("STATUS_KLAIM") : headers.indexOf("STATUS KLAIM");
 
     let groupedData = {};
-
     for(let i = data.length - 1; i >= 1; i--) {
        if(data[i][1].toString() === user.nrpp.toString()) {
            let st = (iNoST !== -1 && data[i][iNoST]) ? data[i][iNoST].toString().trim() : "TANPA ST";
@@ -704,20 +749,46 @@ function api_getLogPribadi(user) {
            
            let wKeluar = (iWaktuKeluar !== -1) ? data[i][iWaktuKeluar] : "";
            let wKeluarStr = (wKeluar instanceof Date) ? Utilities.formatDate(wKeluar, "Asia/Jakarta", "dd/MM/yyyy HH:mm") : wKeluar.toString();
-           
-           // [UPDATE] Parsing Waktu Masuk
            let wMasuk = (iWaktuMasuk !== -1 && data[i][iWaktuMasuk]) ? data[i][iWaktuMasuk] : "";
            let wMasukStr = (wMasuk instanceof Date) ? Utilities.formatDate(wMasuk, "Asia/Jakarta", "dd/MM/yyyy HH:mm") : (wMasuk ? wMasuk.toString() : "-");
+           
+           // [RULE 3, 4, 5, 6]: Kalkulasi Breakdown UPD per baris
+           let durVal = (iDurasi !== -1 && data[i][iDurasi]) ? parseFloat(data[i][iDurasi]) : 0;
+           let dbNominal = (iNominal !== -1 && data[i][iNominal]) ? parseFloat(data[i][iNominal]) : 0;
+           
+           let logDateObj = (wKeluar instanceof Date) ? wKeluar : new Date(); 
+           if (wMasuk instanceof Date) logDateObj = wMasuk; 
+           else if (typeof wMasuk === "string" && wMasuk.length > 5) logDateObj = new Date(wMasuk.toString().replace(/-/g, "/") + " +0700");
+           
+           let isWeekend = (logDateObj.getDay() === 0 || logDateObj.getDay() === 6);
+
+           let calc_upd = (durVal >= 8) ? upd_ge8 : upd_lt8;
+           let calc_makanTotal = uangMakan;
+           let calc_makanSiang = isWeekend ? mknSiangLibur : 0;
+           let calc_lain = isWeekend ? lainLibur : lainKerja;
+           let calc_total = calc_upd + calc_makanTotal + calc_makanSiang + calc_lain;
+
+           // Bypass angka jika durasi masih 0 (belum pulang)
+           if(durVal === 0) {
+               calc_upd = 0; calc_makanTotal = 0; calc_makanSiang = 0; calc_lain = 0; calc_total = 0;
+           }
 
            groupedData[st].push({
                customer: (iCust !== -1 && data[i][iCust]) ? data[i][iCust].toString() : "-",
                lokasi: (iLokasi !== -1 && data[i][iLokasi]) ? data[i][iLokasi].toString() : "-",
                waktuKeluar: wKeluarStr,
                waktuMasuk: wMasukStr,
-               durasi: (iDurasi !== -1 && data[i][iDurasi]) ? parseFloat(data[i][iDurasi]).toFixed(2) : "0.00",
-               nominal: (iNominal !== -1 && data[i][iNominal]) ? parseFloat(data[i][iNominal]) : 0,
+               durasi: durVal.toFixed(2),
+               nominal: dbNominal,
                status: (iStatus !== -1 && data[i][iStatus]) ? data[i][iStatus].toString() : "SEDANG JALAN",
-               klaim: (iKlaim !== -1 && data[i][iKlaim]) ? data[i][iKlaim].toString() : "BELUM KLAIM"
+               klaim: (iKlaim !== -1 && data[i][iKlaim]) ? data[i][iKlaim].toString() : "BELUM KLAIM",
+               breakdown: {
+                   upd: calc_upd,
+                   makanTotal: calc_makanTotal,
+                   makanSiang: calc_makanSiang,
+                   lain: calc_lain,
+                   total: calc_total
+               }
            });
        }
     }
