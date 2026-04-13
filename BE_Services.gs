@@ -268,6 +268,60 @@ function api_submitPerjalananDinas(payload, user) {
     const idTransaksi = "TRX-" + timestamp.getTime();
     const statusAbsensi = payload.statusAbsensi || "H";
 
+    // ==========================================================
+    // [NEW] PROTOKOL VALIDASI RADIUS LATLONG & HAVERSINE ENGINE
+    // ==========================================================
+    if (userLokasiUpper === "RFMC" && statusAbsensi !== "BKF" && statusAbsensi !== "BKS") {
+        
+        const dbMaster = SpreadsheetApp.openById(DB_MASTER_ID);
+        const sheetLatlong = dbMaster.getSheetByName("Master_Latlong");
+        
+        if (sheetLatlong) {
+            const dataLatlong = sheetLatlong.getDataRange().getValues();
+            let targetLat = null, targetLon = null, maxRadius = 0, isLatlongActive = false;
+
+            // Memindai konfigurasi untuk lokasi RFMC
+            for (let i = 1; i < dataLatlong.length; i++) {
+                if (dataLatlong[i][0].toString().trim().toUpperCase() === "RFMC") {
+                    targetLat = parseFloat(dataLatlong[i][1]);
+                    targetLon = parseFloat(dataLatlong[i][2]);
+                    maxRadius = parseFloat(dataLatlong[i][3] || 50); // Default 50 meter jika kosong
+                    isLatlongActive = dataLatlong[i][4].toString().trim().toUpperCase() === "AKTIF";
+                    break;
+                }
+            }
+
+            // Eksekusi Kalkulasi Jarak jika mode Latlong diaktifkan oleh Admin
+            if (isLatlongActive && targetLat !== null && targetLon !== null) {
+                const userKordinat = payload.kordinat.toString().split(",");
+                
+                if (userKordinat.length === 2) {
+                    const userLat = parseFloat(userKordinat[0].trim());
+                    const userLon = parseFloat(userKordinat[1].trim());
+
+                    // Haversine Formula (Menghitung jarak lengkung bumi dalam Meter)
+                    const R = 6371e3; // Radius bumi (Meter)
+                    const rad = Math.PI / 180;
+                    const dLat = (targetLat - userLat) * rad;
+                    const dLon = (targetLon - userLon) * rad;
+                    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                              Math.cos(userLat * rad) * Math.cos(targetLat * rad) *
+                              Math.sin(dLon / 2) * Math.sin(dLon / 2);
+                    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                    const distance = R * c;
+
+                    // Blokir jika jarak melebihi batas radius yang diizinkan
+                    if (distance > maxRadius) {
+                        return { status: "error", message: `⛔ FRAUD ALERT: Posisi Anda (${distance.toFixed(0)} Meter) berada di luar radius POS Security RFMC (Maksimal: ${maxRadius} Meter)!` };
+                    }
+                } else {
+                    return { status: "error", message: "Gagal memindai kordinat GPS atau format tidak valid!" };
+                }
+            }
+        }
+    }
+    // ==========================================================
+
     let rowData = [];
     if (isSales) {
         rowData = [
@@ -390,25 +444,38 @@ function api_submitPulangDinas(payload, user) {
     const durasiJam = diffMs / (1000 * 60 * 60);
 
     let nominalUPD = 0;
-
     if (!isSales) {
         const dbMaster = SpreadsheetApp.openById(DB_MASTER_ID);
         const masterUPD = dbMaster.getSheetByName("Master_UPD").getDataRange().getValues();
-        let baseUPD = 0, uangMakan = 0, mknSiangLibur = 0, lainKerja = 0, lainLibur = 0;
         
+        let baseUPD = 0, uangMakan = 0, mknSiangLibur = 0, lainKerja = 0, lainLibur = 0;
         let keyJabatan = user.jabatan ? user.jabatan.toString().trim().toUpperCase() : "";
         let keyGolongan = user.golongan ? user.golongan.toString().trim().toUpperCase() : "";
+        let keyStatusKaryawan = user.statusKaryawan ? user.statusKaryawan.toString().trim().toUpperCase() : ""; 
 
         for (let i = 1; i < masterUPD.length; i++) {
           let dbJabatan = masterUPD[i][0] ? masterUPD[i][0].toString().trim().toUpperCase() : "";
           let dbGolongan = masterUPD[i][1] ? masterUPD[i][1].toString().trim().toUpperCase() : "";
+          let dbStatusJabatan = masterUPD[i][2] ? masterUPD[i][2].toString().trim().toUpperCase() : ""; 
 
-          if (dbJabatan === keyJabatan && dbGolongan === keyGolongan) {
-            baseUPD = (durasiJam >= 8) ? parseFloat(masterUPD[i][2] || 0) : parseFloat(masterUPD[i][3] || 0);
-            uangMakan = parseFloat(masterUPD[i][4] || 0);
-            mknSiangLibur = parseFloat(masterUPD[i][5] || 0);
-            lainKerja = parseFloat(masterUPD[i][6] || 0);
-            lainLibur = parseFloat(masterUPD[i][7] || 0);
+          // [STRICT MATCHER LOGIC]: Anti Overlap "NON" vs "PROJECT"
+          let isStatusMatch = false;
+          if (dbStatusJabatan === "") {
+              isStatusMatch = true; 
+          } else if (dbStatusJabatan === "PROJECT") {
+              if (keyStatusKaryawan.includes("PROJECT") && !keyStatusKaryawan.includes("NON")) isStatusMatch = true;
+          } else if (dbStatusJabatan === "NON PROJECT") {
+              if (keyStatusKaryawan.includes("NON") || !keyStatusKaryawan.includes("PROJECT")) isStatusMatch = true;
+          } else if (keyStatusKaryawan.includes(dbStatusJabatan)) {
+              isStatusMatch = true;
+          }
+
+          if (dbJabatan === keyJabatan && dbGolongan === keyGolongan && isStatusMatch) {
+            baseUPD = (durasiJam >= 8) ? parseFloat(masterUPD[i][3] || 0) : parseFloat(masterUPD[i][4] || 0); 
+            uangMakan = parseFloat(masterUPD[i][5] || 0);
+            mknSiangLibur = parseFloat(masterUPD[i][6] || 0);
+            lainKerja = parseFloat(masterUPD[i][7] || 0);
+            lainLibur = parseFloat(masterUPD[i][8] || 0);
             break;
           }
         }
@@ -703,34 +770,51 @@ function api_adminGetRekapData(sheetName) {
 // MODUL USER: RIWAYAT PERJALANAN DINAS & UPD (GROUPING ST)
 // ==========================================================
 
-// --- CARI DAN GANTI FUNGSI INI DI BE_Services.gs ---
-
 function api_getLogPribadi(user) {
   try {
     const dbUpd = SpreadsheetApp.openById(DB_UPD_ID);
     let targetSheetName = "Log_" + user.lokasi.trim();
     let sheet = dbUpd.getSheetByName(targetSheetName);
     if(!sheet) return { status: "success", data: {} };
+    
     const data = sheet.getDataRange().getValues();
     if(data.length <= 1) return { status: "success", data: {} };
 
     // [MESIN BARU]: Tarik Master UPD untuk breakdown otomatis di PDF
     const dbMaster = SpreadsheetApp.openById(DB_MASTER_ID);
     const masterUPD = dbMaster.getSheetByName("Master_UPD").getDataRange().getValues();
-    let upd_ge8 = 0, upd_lt8 = 0, uangMakan = 0, mknSiangLibur = 0, lainKerja = 0, lainLibur = 0;
+    
     let keyJabatan = user.jabatan ? user.jabatan.toString().trim().toUpperCase() : "";
     let keyGolongan = user.golongan ? user.golongan.toString().trim().toUpperCase() : "";
+    let keyStatusKaryawan = user.statusKaryawan ? user.statusKaryawan.toString().trim().toUpperCase() : "";
+    
+    // Deklarasi variabel penampung nominal UPD
+    let upd_ge8 = 0, upd_lt8 = 0, uangMakan = 0, mknSiangLibur = 0, lainKerja = 0, lainLibur = 0;
 
     for (let i = 1; i < masterUPD.length; i++) {
       let dbJab = masterUPD[i][0] ? masterUPD[i][0].toString().trim().toUpperCase() : "";
       let dbGol = masterUPD[i][1] ? masterUPD[i][1].toString().trim().toUpperCase() : "";
-      if (dbJab === keyJabatan && dbGol === keyGolongan) {
-        upd_ge8 = parseFloat(masterUPD[i][2] || 0);
-        upd_lt8 = parseFloat(masterUPD[i][3] || 0);
-        uangMakan = parseFloat(masterUPD[i][4] || 0);
-        mknSiangLibur = parseFloat(masterUPD[i][5] || 0);
-        lainKerja = parseFloat(masterUPD[i][6] || 0);
-        lainLibur = parseFloat(masterUPD[i][7] || 0);
+      let dbStatusJabatan = masterUPD[i][2] ? masterUPD[i][2].toString().trim().toUpperCase() : ""; 
+
+      // [STRICT MATCHER LOGIC]: Anti Overlap "NON" vs "PROJECT"
+      let isStatusMatch = false;
+      if (dbStatusJabatan === "") {
+          isStatusMatch = true; 
+      } else if (dbStatusJabatan === "PROJECT") {
+          if (keyStatusKaryawan.includes("PROJECT") && !keyStatusKaryawan.includes("NON")) isStatusMatch = true;
+      } else if (dbStatusJabatan === "NON PROJECT") {
+          if (keyStatusKaryawan.includes("NON") || !keyStatusKaryawan.includes("PROJECT")) isStatusMatch = true;
+      } else if (keyStatusKaryawan.includes(dbStatusJabatan)) {
+          isStatusMatch = true;
+      }
+
+      if (dbJab === keyJabatan && dbGol === keyGolongan && isStatusMatch) {
+        upd_ge8 = parseFloat(masterUPD[i][3] || 0); 
+        upd_lt8 = parseFloat(masterUPD[i][4] || 0);
+        uangMakan = parseFloat(masterUPD[i][5] || 0);
+        mknSiangLibur = parseFloat(masterUPD[i][6] || 0);
+        lainKerja = parseFloat(masterUPD[i][7] || 0);
+        lainLibur = parseFloat(masterUPD[i][8] || 0);
         break;
       }
     }
@@ -738,8 +822,7 @@ function api_getLogPribadi(user) {
     const headers = data[0].map(h => h.toString().toUpperCase().trim());
     const iNoST = headers.indexOf("NO_ST");
     const iCust = headers.indexOf("CUSTOMER");
-    const iLokasi = headers.lastIndexOf("LOKASI"); // [FIX]: Pastikan index 10 (Lokasi Customer)
-    
+    const iLokasi = headers.lastIndexOf("LOKASI");
     const iWaktuKeluar = headers.indexOf("WAKTU_KELUAR") !== -1 ? headers.indexOf("WAKTU_KELUAR") : headers.indexOf("WAKTU KELUAR");
     const iWaktuMasuk = headers.indexOf("WAKTU_MASUK") !== -1 ? headers.indexOf("WAKTU_MASUK") : headers.indexOf("WAKTU MASUK");
     const iDurasi = headers.indexOf("DURASI_JAM") !== -1 ? headers.indexOf("DURASI_JAM") : headers.indexOf("DURASI JAM");
@@ -748,6 +831,8 @@ function api_getLogPribadi(user) {
     const iKlaim = headers.indexOf("STATUS_KLAIM") !== -1 ? headers.indexOf("STATUS_KLAIM") : headers.indexOf("STATUS KLAIM");
 
     let groupedData = {};
+    
+    // --- BLOK KODE STABIL DARI USER (TIDAK ADA PERUBAHAN SAMA SEKALI) ---
     for(let i = data.length - 1; i >= 1; i--) {
        if(data[i][1].toString() === user.nrpp.toString()) {
            let st = (iNoST !== -1 && data[i][iNoST]) ? data[i][iNoST].toString().trim() : "TANPA ST";
@@ -801,6 +886,7 @@ function api_getLogPribadi(user) {
            });
        }
     }
+    // --- END BLOK STABIL ---
 
     return { status: "success", data: groupedData };
   } catch(e) {
@@ -995,18 +1081,37 @@ function api_adminEditLog(payload) {
     if(diffMs < 0) throw new Error("Waktu masuk tidak boleh lebih awal dari keluar.");
     const durasiJam = diffMs / (1000 * 60 * 60);
 
-    // Kalkulasi Ulang UPD
+  // Kalkulasi Ulang UPD
     let nominalUPD = 0;
     const dbMaster = SpreadsheetApp.openById(DB_MASTER_ID);
     const masterUPD = dbMaster.getSheetByName("Master_UPD").getDataRange().getValues();
     let baseUPD = 0, uangMakan = 0, mknSiangLibur = 0, lainKerja = 0, lainLibur = 0;
+    
+    let keyStatusKaryawan = data[targetRow - 1][5] ? data[targetRow - 1][5].toString().trim().toUpperCase() : "";
+
     for(let i=1; i<masterUPD.length; i++){
-      if(masterUPD[i][0].toString().toUpperCase() === payload.jabatan.toUpperCase() && masterUPD[i][1].toString().toUpperCase() === payload.golongan.toUpperCase()){
-        baseUPD = (durasiJam >= 8) ? parseFloat(masterUPD[i][2] || 0) : parseFloat(masterUPD[i][3] || 0);
-        uangMakan = parseFloat(masterUPD[i][4] || 0);
-        mknSiangLibur = parseFloat(masterUPD[i][5] || 0);
-        lainKerja = parseFloat(masterUPD[i][6] || 0);
-        lainLibur = parseFloat(masterUPD[i][7] || 0);
+      let dbJabatan = masterUPD[i][0] ? masterUPD[i][0].toString().trim().toUpperCase() : "";
+      let dbGolongan = masterUPD[i][1] ? masterUPD[i][1].toString().trim().toUpperCase() : "";
+      let dbStatusJabatan = masterUPD[i][2] ? masterUPD[i][2].toString().trim().toUpperCase() : ""; 
+
+      // [STRICT MATCHER LOGIC]: Anti Overlap "NON" vs "PROJECT"
+      let isStatusMatch = false;
+      if (dbStatusJabatan === "") {
+          isStatusMatch = true; 
+      } else if (dbStatusJabatan === "PROJECT") {
+          if (keyStatusKaryawan.includes("PROJECT") && !keyStatusKaryawan.includes("NON")) isStatusMatch = true;
+      } else if (dbStatusJabatan === "NON PROJECT") {
+          if (keyStatusKaryawan.includes("NON") || !keyStatusKaryawan.includes("PROJECT")) isStatusMatch = true;
+      } else if (keyStatusKaryawan.includes(dbStatusJabatan)) {
+          isStatusMatch = true;
+      }
+
+      if(dbJabatan === payload.jabatan.toUpperCase() && dbGolongan === payload.golongan.toUpperCase() && isStatusMatch){
+        baseUPD = (durasiJam >= 8) ? parseFloat(masterUPD[i][3] || 0) : parseFloat(masterUPD[i][4] || 0); 
+        uangMakan = parseFloat(masterUPD[i][5] || 0);
+        mknSiangLibur = parseFloat(masterUPD[i][6] || 0);
+        lainKerja = parseFloat(masterUPD[i][7] || 0);
+        lainLibur = parseFloat(masterUPD[i][8] || 0);
         break;
       }
     }
