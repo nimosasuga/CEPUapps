@@ -1418,6 +1418,9 @@ function buildUI_ApprovalDashboard(logs) {
 // ==========================================================
 // ELEGANT UNLOCK MODAL & LOGIC
 // ==========================================================
+// ==========================================================
+// ELEGANT UNLOCK MODAL & LOGIC (BUG FIX: API ROUTING & ERROR HANDLING)
+// ==========================================================
 function action_openUnlockModal(custName, idTrx, nrpp) {
     const modalId = 'modal-confirm-unlock';
 
@@ -1429,12 +1432,27 @@ function action_openUnlockModal(custName, idTrx, nrpp) {
         id: 'btn-exec-unlock',
         onClick: () => {
             const btn = document.getElementById('btn-exec-unlock');
-            btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Memproses...'; btn.disabled = true;
-            google.script.run.withSuccessHandler((res) => {
-                document.getElementById(modalId).remove();
-                if(res.status === 'success') { sysShowToast(res.message, "success"); renderWorkspace_Approval(); }
-                else sysShowToast(res.message, "error");
-            }).api_adminUnlockPrintByTRX(idTrx, nrpp);
+            btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Memproses...'; 
+            btn.disabled = true;
+
+            // [FIX]: Routing ke API Bulk (Masal) yang sudah tersedia dengan format array [idTrx]
+            // Serta penambahan Failure Handler agar UI tidak loading selamanya jika server *down*
+            google.script.run
+                .withSuccessHandler((res) => {
+                    document.getElementById(modalId).remove();
+                    if(res.status === 'success') { 
+                        sysShowToast(res.message, "success"); 
+                        renderWorkspace_Approval(); // Refresh UI
+                    } else {
+                        sysShowToast(res.message, "error");
+                    }
+                })
+                .withFailureHandler((err) => {
+                    document.getElementById(modalId).remove();
+                    sysShowToast("CRITICAL: Gagal terhubung ke Server API!", "error");
+                    console.error("Unlock Error:", err);
+                })
+                .api_adminBulkUnlockPrint([idTrx]); 
         }
     }, [DOM_Engine.create('i', 'fa-solid fa-lock-open'), 'Ya, Buka Gembok']);
 
