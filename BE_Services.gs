@@ -6,6 +6,14 @@
 // ==============================================================================
 
 function doGet(e) {
+  // 1. Logika Verifikasi Publik (Tanpa Login)
+  if (e.parameter.verify_st && e.parameter.nrpp) {
+    // Kita panggil fungsi render dan tambahkan header bypass
+    return renderPublicVerification(e.parameter.verify_st, e.parameter.nrpp)
+        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
+
+  // 2. Logika Dashboard Internal (Tetap Aman)
   return HtmlService.createTemplateFromFile('UI_Base')
     .evaluate()
     .setTitle('C.E.P.U - Enterprise Portal')
@@ -1302,4 +1310,73 @@ function api_adminGetIndividualLogs(nrpp, month, year) {
     logs.sort((a, b) => a.rawDate - b.rawDate); // Urutkan dari tanggal awal bulan
     return { status: "success", data: logs, filter: { month, year } };
   } catch (e) { return { status: "error", message: e.toString() }; }
+}
+
+function renderPublicVerification(stNumber, nrpp) {
+  let foundData = null;
+  const targetST = String(stNumber).replace(/^'/, '').trim();
+  const targetNRPP = String(nrpp).trim();
+
+  try {
+    // Mencari data di DB_UPD dan DB_SALES
+    const dbs = [DB_UPD_ID, DB_SALES_ID];
+    for (const dbId of dbs) {
+      if (foundData) break;
+      const db = SpreadsheetApp.openById(dbId);
+      const sheets = db.getSheets();
+      
+      for (const sheet of sheets) {
+        const values = sheet.getDataRange().getValues();
+        if (values.length < 2) continue;
+        const headers = values[0].map(h => String(h).toUpperCase().trim());
+        const iST = headers.indexOf("NO_ST") !== -1 ? headers.indexOf("NO_ST") : 8;
+        const iNRPP = headers.indexOf("NRPP") !== -1 ? headers.indexOf("NRPP") : 1;
+        
+        for (let i = 1; i < values.length; i++) {
+          if (String(values[i][iST]).includes(targetST) && String(values[i][iNRPP]) === targetNRPP) {
+            foundData = {
+              nama: values[i][2],
+              customer: values[i][headers.indexOf("CUSTOMER") || 9],
+              status: values[i][headers.indexOf("STATUS_PERJALANAN") || 17] || "SELESAI",
+              waktu: values[i][headers.indexOf("WAKTU_KELUAR") || 11]
+            };
+            break;
+          }
+        }
+      }
+    }
+
+    const color = foundData ? "emerald" : "rose";
+    const statusText = foundData ? "DOKUMEN VALID" : "DATA TIDAK DITEMUKAN";
+
+    let html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <script src="https://cdn.tailwindcss.com"></script>
+      </head>
+      <body class="bg-slate-100 flex items-center justify-center min-h-screen p-4">
+        <div class="max-w-xs w-full bg-white rounded-3xl shadow-xl border border-slate-200 overflow-hidden">
+          <div class="p-6 text-center">
+            <div class="w-16 h-16 bg-${color}-100 text-${color}-600 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="${foundData ? 'M5 13l4 4L19 7' : 'M6 18L18 6M6 6l12 12'}"></path></svg>
+            </div>
+            <h1 class="text-xl font-black text-slate-800">${statusText}</h1>
+            ${foundData ? `
+              <div class="mt-4 text-left text-sm space-y-2 bg-slate-50 p-4 rounded-2xl">
+                <p class="text-[10px] font-bold text-slate-400 uppercase">Nama</p><p class="font-bold text-slate-700">${foundData.nama}</p>
+                <p class="text-[10px] font-bold text-slate-400 uppercase">No ST</p><p class="font-bold text-indigo-600">${targetST}</p>
+                <p class="text-[10px] font-bold text-slate-400 uppercase">Customer</p><p class="font-bold text-slate-700">${foundData.customer}</p>
+              </div>
+            ` : `<p class="text-slate-500 text-xs mt-2">Nomor ST atau NRPP tidak cocok dengan database kami.</p>`}
+          </div>
+          <div class="bg-slate-800 p-3 text-center text-[9px] text-white font-bold tracking-widest uppercase">C.E.P.U VERIFICATION SYSTEM</div>
+        </div>
+      </body>
+      </html>`;
+    return HtmlService.createHtmlOutput(html);
+  } catch (e) {
+    return HtmlService.createHtmlOutput("<p>Error: " + e.message + "</p>");
+  }
 }
