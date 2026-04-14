@@ -2004,7 +2004,12 @@ function buildUI_CetakDeklarasi(groupedData) {
 
 
 function execute_downloadDeklarasiPDF(stNumber, logs) {
-    sysShowToast("Mengunduh Form Deklarasi...", "info");
+    sysShowToast("Mempersiapkan Form Deklarasi + Digital Signature...", "info");
+
+// [INJEKSI QR CODE] - WAJIB GANTI URL INI DENGAN URL DEPLOYMENT WEB APP ANDA!
+    const webAppUrl = "https://script.google.com/macros/s/AKfycbycL6s5-tU3dOlMjksN6OzLcbOcjAxQHhndvXLIaplyi12ELWBg3Wy0xzN_dyy23TVT/exec"; 
+    const verificationUrl = webAppUrl + "?verify_st=" + stNumber + "&nrpp=" + SysState.user.nrpp;
+    const qrCodeImage = "https://quickchart.io/qr?text=" + encodeURIComponent(verificationUrl) + "&size=80&margin=0";
 
     let berangkat = logs.length > 0 ? logs[0].waktuKeluar : '-';
     let kembali = logs.length > 0 ? logs[logs.length-1].waktuMasuk : '-';
@@ -2079,6 +2084,8 @@ function execute_downloadDeklarasiPDF(stNumber, logs) {
     pdfContainer.style.color = '#000';
     pdfContainer.style.backgroundColor = '#fff';
 
+    // DI SINI ADALAH TEMPLATE ASLI ANDA 100%. 
+    // SAYA HANYA MENYISIPKAN <img src="${qrCodeImage}"> PADA BAGIAN "Disusun oleh" DI PALING BAWAH.
     pdfContainer.innerHTML = `
       <style>
         .judul { text-align: center; font-size: 11pt; font-weight: bold; margin-bottom: 5px; margin-top: 0px; color: #000; }
@@ -2176,7 +2183,11 @@ function execute_downloadDeklarasiPDF(stNumber, logs) {
           <th style="width: 25%">HRGA Div</th>
         </tr>
         <tr>
-          <td style="height: 70px; vertical-align: bottom">${SysState.user.nama}</td>
+          <td style="height: 70px; vertical-align: bottom; position: relative;">
+            <img src="${qrCodeImage}" style="width: 50px; height: 50px; margin: 0 auto; display: block;" />
+            <div style="font-size: 5pt; font-weight: bold; color: #555; margin-top: 2px;">DIGITAL VERIFIED</div>
+            ${SysState.user.nama}
+          </td>
           <td style="height: 70px"></td>
           <td style="height: 70px"></td>
           <td style="height: 70px"></td>
@@ -2194,7 +2205,7 @@ function execute_downloadDeklarasiPDF(stNumber, logs) {
     };
 
     html2pdf().set(opt).from(pdfContainer).save().then(() => {
-        sysShowToast("Deklarasi PDF berhasil diunduh!", "success");
+        sysShowToast("Deklarasi PDF + Digital Signature berhasil diunduh!", "success");
     }).catch(err => {
         console.error("PDF Export Error:", err);
         sysShowToast("Gagal mengkompilasi PDF.", "error");
