@@ -2531,6 +2531,9 @@ function buildUI_LogPribadi(groupedData, targetPeriode) {
         let totalUPD = 0; let totalDurasi = 0;
         logs.forEach(l => { totalUPD += l.nominal; totalDurasi += parseFloat(l.durasi); });
 
+        const lokasiList = [...new Set(logs.map(l => l.lokasi).filter(l => l && l !== '-'))];
+        const lokasiText = lokasiList.length > 0 ? lokasiList.join(' • ') : '-';
+
         // [FIX SCENARIO 1]: Tombol hanya terkunci jika SEMUA trip di ST ini sudah diprint.
         // Jika ada trip baru (Hari 3), gembok akan otomatis terbuka kembali.
         const isAlreadyPrinted = logs.every(l => l.klaim.toUpperCase().includes("SUDAH"));
@@ -2617,6 +2620,10 @@ function buildUI_LogPribadi(groupedData, targetPeriode) {
                         DOM_Engine.create('div', 'flex flex-wrap items-center', {}, [
                             DOM_Engine.create('h4', 'text-xl font-extrabold text-white tracking-wider', {}, [st]),
                             btnCetakPDF
+                        ]),
+                        DOM_Engine.create('p', 'text-[10px] text-slate-400 mt-1 font-medium tracking-wide flex items-center gap-1', {}, [
+                            DOM_Engine.create('i', 'fa-solid fa-location-dot'),
+                            lokasiText
                         ])
                     ])
                 ]),
