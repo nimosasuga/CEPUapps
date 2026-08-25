@@ -1940,7 +1940,7 @@ function buildUI_ApprovalDashboard(logs) {
 
     const trs = logs.map(log => {
         let jamMasukUI, statusUI, rowBg = 'hover:bg-slate-50/50';
-        let rowStatusType = 'pending'; // Default klasifikasi untuk filter
+        let rowStatusType = 'pending';
 
         if (log.isAnomali) {
             rowBg = 'bg-rose-50/30 hover:bg-rose-50';
@@ -1948,10 +1948,8 @@ function buildUI_ApprovalDashboard(logs) {
             jamMasukUI = DOM_Engine.create('div', 'flex items-center gap-2 text-rose-500', {}, [DOM_Engine.create('i', 'fa-solid fa-triangle-exclamation animate-pulse'), DOM_Engine.create('span', 'text-sm font-extrabold', {}, ['AUTO-CHECKOUT (23:59)'])]);
             statusUI = DOM_Engine.create('span', 'text-[10px] font-bold px-3 py-1.5 rounded-full bg-rose-100 text-rose-600 shadow-sm', {}, ['ANOMALI / SIDANG']);
         } else {
-            // Deteksi status untuk klasifikasi filter
             if (log.persetujuan.toUpperCase().includes('APPROVED')) rowStatusType = 'approved';
             else if (log.statusKlaim.toUpperCase().includes('SUDAH')) rowStatusType = 'terkunci';
-
             jamMasukUI = DOM_Engine.create('span', 'text-sm font-bold text-slate-700', {}, [log.waktuMasuk, ' WIB']);
             statusUI = DOM_Engine.create('span', 'text-[10px] font-bold px-3 py-1.5 rounded-full bg-slate-100 text-slate-600 shadow-sm', {}, [log.persetujuan]);
         }
@@ -1970,20 +1968,16 @@ function buildUI_ApprovalDashboard(logs) {
             aksiButtons.push(btnUnlock);
         }
 
-        // [UX FIX]: Background solid untuk kolom Sticky (Sinkronisasi dengan hover efek baris)
         let stickyBg = log.isAnomali ? 'bg-rose-50 group-hover:bg-rose-100' : 'bg-white group-hover:bg-slate-50';
 
-        // [UX UPDATE]: Injeksi kolom UPD ke dalam baris data
-        return DOM_Engine.create('tr', `approval-row-item ${rowBg} transition-colors border-b border-slate-100 hover:z-20 relative group`, {
+        // === TABLE ROW (Desktop/Tablet) ===
+        const tableRow = DOM_Engine.create('tr', `approval-row-item ${rowBg} transition-colors border-b border-slate-100 hover:z-20 relative group`, {
             'data-search': `${log.nama} ${log.nrpp} ${log.customer}`.toLowerCase(),
             'data-status': rowStatusType
         }, [
-            // Freeze Area (0px - 410px)
             DOM_Engine.create('td', `w-[60px] min-w-[60px] px-3 py-4 text-center sticky left-0 ${stickyBg} z-10`, {}, [DOM_Engine.create('input', 'chk-approve-item w-5 h-5 text-indigo-600 rounded border-slate-300 cursor-pointer', { type: 'checkbox', value: log.idTransaksi, onChange: (e) => toggleCheckbox(e.target.value, e.target.checked) })]),
-            DOM_Engine.create('td', `hidden md:table-cell w-[110px] min-w-[110px] px-3 py-4 whitespace-nowrap text-center sticky left-[60px] ${stickyBg} z-10`, {}, [DOM_Engine.create('div', 'flex items-center justify-center', {}, aksiButtons)]),
+            DOM_Engine.create('td', 'hidden md:table-cell w-[110px] min-w-[110px] px-3 py-4 whitespace-nowrap text-center sticky left-[60px] bg-white z-10', {}, [DOM_Engine.create('div', 'flex items-center justify-center', {}, aksiButtons)]),
             DOM_Engine.create('td', `w-[240px] min-w-[240px] px-5 py-4 whitespace-nowrap sticky left-[170px] ${stickyBg} z-10 shadow-[4px_0_6px_-1px_rgba(0,0,0,0.05)] border-r border-slate-100`, {}, [DOM_Engine.create('p', 'text-sm font-extrabold text-slate-800 truncate max-w-[200px]', {}, [log.nama]), DOM_Engine.create('p', 'text-[10px] font-bold text-slate-400 uppercase tracking-wider', {}, [log.nrpp])]),
-            
-            // Scrollable Area (Normal Columns)
             DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap', {}, [
                 DOM_Engine.create('p', 'text-sm font-bold text-slate-700', {}, [log.customer]),
                 DOM_Engine.create('p', 'text-[10px] text-slate-500 font-medium mt-0.5 truncate max-w-[200px]', {}, [
@@ -1993,15 +1987,73 @@ function buildUI_ApprovalDashboard(logs) {
             ]),
             DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap text-sm text-slate-500 font-medium', {}, [log.waktuKeluar]),
             DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap', {}, [jamMasukUI]),
-            
-            // [NEW COLUMN]: UPD Value dengan format Rupiah
             DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap text-sm font-extrabold text-emerald-600 text-right', {}, [
                 log.nominal ? `Rp ${Number(log.nominal).toLocaleString('id-ID')}` : 'Rp 0'
             ]),
-            
             DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap text-center', {}, [statusUI])
         ]);
+
+        // === MOBILE CARD ===
+        const isAnomaliCard = log.isAnomali;
+        const cardBg = isAnomaliCard ? 'border-rose-200 bg-rose-50/30' : 'border-slate-200 bg-white';
+        const updText = log.nominal ? `Rp ${Number(log.nominal).toLocaleString('id-ID')}` : 'Rp 0';
+
+        const mobileCard = DOM_Engine.create('div', `approval-row-item p-4 rounded-2xl border ${cardBg} shadow-sm mb-3 fade-in-up`, {
+            'data-search': `${log.nama} ${log.nrpp} ${log.customer}`.toLowerCase(),
+            'data-status': rowStatusType
+        }, [
+            // Header: Checkbox + Nama + Status
+            DOM_Engine.create('div', 'flex items-start justify-between gap-3 mb-3', {}, [
+                DOM_Engine.create('div', 'flex items-center gap-3 flex-1 min-w-0', {}, [
+                    DOM_Engine.create('input', 'chk-approve-item w-5 h-5 text-indigo-600 rounded border-slate-300 cursor-pointer flex-shrink-0 mt-0.5', { type: 'checkbox', value: log.idTransaksi, onChange: (e) => toggleCheckbox(e.target.value, e.target.checked) }),
+                    DOM_Engine.create('div', 'flex-1 min-w-0', {}, [
+                        DOM_Engine.create('p', 'text-sm font-extrabold text-slate-800 truncate', {}, [log.nama]),
+                        DOM_Engine.create('p', 'text-[10px] font-bold text-slate-400 uppercase tracking-wider', {}, [log.nrpp])
+                    ])
+                ]),
+                statusUI
+            ]),
+            // Info Grid
+            DOM_Engine.create('div', 'grid grid-cols-2 gap-2 mb-3', {}, [
+                DOM_Engine.create('div', 'bg-slate-50 rounded-lg p-2', {}, [
+                    DOM_Engine.create('p', 'text-[9px] font-bold text-slate-400 uppercase', {}, ['Customer']),
+                    DOM_Engine.create('p', 'text-xs font-bold text-slate-700 truncate', {}, [log.customer || '-'])
+                ]),
+                DOM_Engine.create('div', 'bg-slate-50 rounded-lg p-2', {}, [
+                    DOM_Engine.create('p', 'text-[9px] font-bold text-slate-400 uppercase', {}, ['Lokasi']),
+                    DOM_Engine.create('p', 'text-xs font-bold text-slate-700 truncate', {}, [log.lokasi || '-'])
+                ]),
+                DOM_Engine.create('div', 'bg-slate-50 rounded-lg p-2', {}, [
+                    DOM_Engine.create('p', 'text-[9px] font-bold text-slate-400 uppercase', {}, ['Keluar']),
+                    DOM_Engine.create('p', 'text-xs font-bold text-slate-700', {}, [log.waktuKeluar || '-'])
+                ]),
+                DOM_Engine.create('div', 'bg-slate-50 rounded-lg p-2', {}, [
+                    DOM_Engine.create('p', 'text-[9px] font-bold text-slate-400 uppercase', {}, ['Masuk']),
+                    DOM_Engine.create('p', `text-xs font-bold ${isAnomaliCard ? 'text-rose-600' : 'text-slate-700'}`, {}, [isAnomaliCard ? 'AUTO (23:59)' : (log.waktuMasuk || '-')])
+                ]),
+                DOM_Engine.create('div', 'bg-emerald-50 rounded-lg p-2', {}, [
+                    DOM_Engine.create('p', 'text-[9px] font-bold text-emerald-500 uppercase', {}, ['UPD']),
+                    DOM_Engine.create('p', 'text-xs font-extrabold text-emerald-600', {}, [updText])
+                ]),
+                DOM_Engine.create('div', 'bg-slate-50 rounded-lg p-2', {}, [
+                    DOM_Engine.create('p', 'text-[9px] font-bold text-slate-400 uppercase', {}, ['Waktu Keluar']),
+                    DOM_Engine.create('p', 'text-xs font-bold text-slate-700', {}, [log.waktuKeluar || '-'])
+                ])
+            ]),
+            // Action Buttons
+            DOM_Engine.create('div', 'flex items-center gap-2 pt-2 border-t border-slate-100', {}, [
+                ...aksiButtons.map(b => DOM_Engine.create('div', 'flex-1', {}, [b])),
+                DOM_Engine.create('div', 'flex-1', {}, [DOM_Engine.create('button', 'w-full py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-500 hover:text-white rounded-xl text-xs font-bold transition-all border border-indigo-100 flex items-center justify-center gap-1', {
+                    onClick: () => action_openEditSidang(log)
+                }, [DOM_Engine.create('i', 'fa-solid fa-pen-to-square'), ' Sidang'])])
+            ])
+        ]);
+
+        return { tableRow, mobileCard, rowStatusType };
     });
+
+    const tableTrs = trs.map(t => t.tableRow);
+    const mobileCards = trs.map(t => t.mobileCard);
 
     // [UX UPDATE]: Menambahkan header UPD pada susunan sticky header
     const theadThs = [
@@ -2025,9 +2077,12 @@ function buildUI_ApprovalDashboard(logs) {
 
     // [FINAL RENDER]: Injeksi variabel `filterBar` ke dalam wadah (Container)
     container.appendChild(DOM_Engine.create('div', 'bg-aurora min-h-screen p-2', {}, [
-        headerSec, filterBar, bulkActionBar, 
-        DOM_Engine.create('div', 'glass overflow-auto max-h-[65vh] rounded-[2rem] shadow-premium border border-white fade-in-up relative hide-scrollbar', {}, [
-            DOM_Engine.create('table', 'min-w-full relative', {}, [thead, DOM_Engine.create('tbody', 'bg-white/40', {}, trs)])
+        headerSec, filterBar, bulkActionBar,
+        // === MOBILE CARD LAYOUT ===
+        DOM_Engine.create('div', 'md:hidden', {}, mobileCards),
+        // === DESKTOP/TABLET TABLE LAYOUT ===
+        DOM_Engine.create('div', 'hidden md:block glass overflow-auto max-h-[65vh] rounded-[2rem] shadow-premium border border-white fade-in-up relative hide-scrollbar', {}, [
+            DOM_Engine.create('table', 'min-w-full relative', {}, [thead, DOM_Engine.create('tbody', 'bg-white/40', {}, tableTrs)])
         ])
     ]));
   }
