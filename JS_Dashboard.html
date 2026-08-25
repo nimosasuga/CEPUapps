@@ -5,14 +5,33 @@
 // UPDATE: Dynamic Status Absensi Field
 // ==============================================================================
 
-// --- CARI DAN GANTI FUNGSI renderView_MainLayout & toggleSidebar DI JS_Dashboard.html ---
-
-  function renderView_MainLayout() {
+function renderView_MainLayout() {
     DOM_Engine.clear('sys-root');
     const root = document.getElementById('sys-root');
-    const isSuperAdmin = (SysState.user.jabatan === 'Super Admin' || SysState.user.jabatan === 'Administrator' || SysState.user.jabatan === 'HRD');
+    const isSuperAdmin = sysHasPrivilegedAccess(SysState.user);
 
-    const overlay = DOM_Engine.create('div', 'fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 lg:hidden opacity-0 pointer-events-none transition-opacity duration-300', { id: 'nav-overlay', onClick: toggleSidebar });
+    // [INJEKSI CSS DINAMIS UNTUK EFEK HIDE/SMOOTH SIDEBAR ENTERPRISE]
+    if (!document.getElementById('sys-sidebar-style')) {
+        const style = document.createElement('style');
+        style.id = 'sys-sidebar-style';
+        style.innerHTML = `
+            #nav-sidebar { transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1), transform 0.4s cubic-bezier(0.4, 0, 0.2, 1); overflow-x: hidden; }
+            .sidebar-text-wrap { transition: opacity 0.2s ease, width 0.3s ease; white-space: nowrap; overflow: hidden; opacity: 1; }
+            @media (min-width: 1024px) {
+                #nav-sidebar.sidebar-minimized { width: 6rem !important; }
+                #nav-sidebar.sidebar-minimized .sidebar-text-wrap { opacity: 0; width: 0; display: none; }
+                #nav-sidebar.sidebar-minimized .sys-menu-item { justify-content: center; padding-left: 0; padding-right: 0; margin-left: 0.75rem; margin-right: 0.75rem; }
+                #nav-sidebar.sidebar-minimized .sys-menu-item i { margin-right: 0 !important; font-size: 1.25rem; }
+                #nav-sidebar.sidebar-minimized .header-logo-wrap { padding-left: 0; padding-right: 0; justify-content: center; gap: 0; }
+                #nav-sidebar.sidebar-minimized .profile-card-wrap { background: transparent; border-color: transparent; padding: 0.5rem; justify-content: center; box-shadow: none; }
+                #nav-sidebar.sidebar-minimized .cmd-center-title { display: none; }
+                #nav-sidebar.sidebar-minimized .cmd-center-icon { display: flex !important; justify-content: center; width: 100%; margin-top: 1.5rem; margin-bottom: 0.5rem; color: #cbd5e1; }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    const overlay = DOM_Engine.create('div', 'fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 lg:hidden opacity-0 pointer-events-none transition-opacity duration-300', { id: 'nav-overlay', onClick: sysToggleMainSidebar });
 
     const menuItems = [
         DOM_Engine.create('div', 'sys-menu-item flex items-center gap-4 px-6 py-4 mx-4 rounded-2xl font-bold bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-lg cursor-pointer transition-transform hover:-translate-y-1 hover:shadow-indigo-500/30 mt-2', { 
@@ -20,7 +39,7 @@
             onClick: () => sysNavigateTo(renderWorkspace_Dinas, 'menu-dinas') 
         }, [
             DOM_Engine.create('i', 'fa-solid fa-car-side text-lg w-6 text-center'),
-            DOM_Engine.create('span', 'tracking-wide', {}, ['Perjalanan Dinas'])
+            DOM_Engine.create('span', 'tracking-wide sidebar-text-wrap', {}, ['Perjalanan Dinas'])
         ])
     ];
 
@@ -32,32 +51,33 @@
             onClick: () => sysNavigateTo(renderWorkspace_LogPribadi, 'menu-log-pribadi') 
         }, [
             DOM_Engine.create('i', 'fa-solid fa-folder-open text-lg w-6 text-center text-slate-400 group-hover:text-indigo-500 transition-colors'),
-            DOM_Engine.create('span', 'tracking-wide', {}, ['Log Perjalanan (UPD)'])
+            DOM_Engine.create('span', 'tracking-wide sidebar-text-wrap', {}, ['Log Perjalanan (UPD)'])
         ]));
 
-        // [MENU BARU]: Cetak Deklarasi
         menuItems.push(DOM_Engine.create('div', 'sys-menu-item flex items-center gap-4 px-6 py-3.5 mx-4 rounded-2xl font-semibold text-slate-600 hover:bg-purple-50 hover:text-purple-600 cursor-pointer mt-2 transition-all group border border-transparent hover:border-purple-100', { 
             id: 'menu-cetak-deklarasi', 
             onClick: () => sysNavigateTo(renderWorkspace_CetakDeklarasi, 'menu-cetak-deklarasi') 
         }, [
             DOM_Engine.create('i', 'fa-solid fa-print text-lg w-6 text-center text-slate-400 group-hover:text-purple-500 transition-colors'),
-            DOM_Engine.create('span', 'tracking-wide', {}, ['Cetak Deklarasi'])
+            DOM_Engine.create('span', 'tracking-wide sidebar-text-wrap', {}, ['Cetak Deklarasi'])
         ]));
     }
 
     if (isSuperAdmin) {
-        // [UPDATE KILLER UI]: Modifikasi agar semua Menu Super Admin masuk ke dalam sistem Navigasi
         const createAdminMenu = (menuId, icon, text, actionCallback) => DOM_Engine.create('div', 'sys-menu-item flex items-center gap-4 px-6 py-3.5 mx-4 rounded-2xl font-semibold text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 cursor-pointer mt-2 transition-all group border border-transparent hover:border-indigo-100', { 
             id: menuId, 
             onClick: () => sysNavigateTo(actionCallback || (() => sysShowToast(`Akses Modul: ${text}`)), menuId) 
         }, [
             DOM_Engine.create('i', `fa-solid ${icon} text-lg w-6 text-center text-slate-400 group-hover:text-indigo-500 transition-colors`),
-            DOM_Engine.create('span', 'tracking-wide', {}, [text])
+            DOM_Engine.create('span', 'tracking-wide sidebar-text-wrap', {}, [text])
         ]);
 
-        menuItems.push(DOM_Engine.create('div', 'px-8 mt-8 mb-3 text-[11px] font-extrabold text-indigo-400 tracking-widest uppercase flex items-center gap-2', {}, [
+        menuItems.push(DOM_Engine.create('div', 'px-8 mt-8 mb-3 cmd-center-title text-[11px] font-extrabold text-indigo-400 tracking-widest uppercase flex items-center gap-2', {}, [
             DOM_Engine.create('i', 'fa-solid fa-crown'), 'Command Center'
         ]));
+        
+        // Ikon pengganti saat menu di minimize
+        menuItems.push(DOM_Engine.create('div', 'hidden cmd-center-icon', {}, [DOM_Engine.create('i', 'fa-solid fa-ellipsis')]));
 
         menuItems.push(createAdminMenu('menu-master', 'fa-database', 'Master Data (DB)', renderWorkspace_MasterDB));
         menuItems.push(createAdminMenu('menu-karyawan', 'fa-users-gear', 'Kelola Karyawan', renderWorkspace_KelolaKaryawan));
@@ -70,41 +90,54 @@
 
     const profileSubtitle = [SysState.user.jabatan, SysState.user.golongan, SysState.user.statusKaryawan].filter(Boolean).join(' • ');
 
-    const userCard = DOM_Engine.create('div', `p-4 mx-4 mb-4 rounded-2xl flex items-center gap-4 border ${isSuperAdmin ? 'bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200/50' : 'bg-slate-50 border-slate-200'}`, {}, [
+    const userCard = DOM_Engine.create('div', `profile-card-wrap p-4 mx-4 mb-4 rounded-2xl flex items-center gap-4 border transition-all duration-300 ${isSuperAdmin ? 'bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200/50' : 'bg-slate-50 border-slate-200'}`, {}, [
         DOM_Engine.create('div', `w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 shadow-inner ${isSuperAdmin ? 'bg-gradient-to-br from-amber-400 to-orange-500' : 'bg-slate-200'}`, {}, [
             DOM_Engine.create('i', `fa-solid ${isSuperAdmin ? 'fa-bolt text-white text-xl' : 'fa-user text-slate-400 text-xl'}`)
         ]),
-        DOM_Engine.create('div', 'overflow-hidden flex-1', {}, [
+        DOM_Engine.create('div', 'overflow-hidden flex-1 sidebar-text-wrap', {}, [
             DOM_Engine.create('p', 'text-sm font-extrabold text-slate-800 truncate tracking-tight', {}, [SysState.user.nama]),
             DOM_Engine.create('p', `text-[10px] uppercase font-bold mt-1 tracking-wider truncate ${isSuperAdmin ? 'text-amber-600' : 'text-slate-500'}`, {}, [profileSubtitle])
         ])
     ]);
 
-    const btnLogout = DOM_Engine.create('button', 'mx-4 mb-6 flex items-center justify-center gap-2 py-3.5 rounded-2xl text-sm font-bold text-rose-500 bg-rose-50 hover:bg-rose-500 hover:text-white transition-colors shadow-sm', { onClick: handleAction_Logout }, [DOM_Engine.create('i', 'fa-solid fa-power-off'), ' Keluar Sistem']);
+    const btnLogout = DOM_Engine.create('button', 'sys-menu-item mx-4 mb-6 flex items-center justify-center gap-3 py-3.5 rounded-2xl text-sm font-bold text-rose-500 bg-rose-50 hover:bg-rose-500 hover:text-white transition-colors shadow-sm', { onClick: handleAction_Logout }, [
+        DOM_Engine.create('i', 'fa-solid fa-power-off text-lg'), 
+        DOM_Engine.create('span', 'sidebar-text-wrap', {}, ['Keluar Sistem'])
+    ]);
 
-    const sidebar = DOM_Engine.create('nav', 'w-80 bg-white/80 backdrop-blur-2xl h-full flex flex-col fixed lg:static z-50 sidebar-transition -translate-x-full lg:translate-x-0 border-r border-slate-200 shadow-[4px_0_24px_rgba(0,0,0,0.02)]', { id: 'nav-sidebar' }, [
-        DOM_Engine.create('div', 'h-20 flex items-center gap-4 px-8 border-b border-slate-100', {}, [
-            DOM_Engine.create('div', 'w-10 h-10 bg-gradient-to-br from-indigo-600 to-blue-500 rounded-xl flex items-center justify-center shadow-md', {}, [DOM_Engine.create('i', 'fa-solid fa-layer-group text-white text-lg')]),
-            DOM_Engine.create('span', 'font-extrabold text-2xl text-slate-800 tracking-tighter', {}, ['C.E.P.U'])
+    // Mempertahankan state jika direfresh
+    const initMinimizedClass = SysState.ui.sidebarMinimized ? 'sidebar-minimized' : '';
+
+    const sidebar = DOM_Engine.create('nav', `w-80 bg-white/80 backdrop-blur-2xl h-full flex flex-col fixed lg:static z-50 sidebar-transition -translate-x-full lg:translate-x-0 border-r border-slate-200 shadow-[4px_0_24px_rgba(0,0,0,0.02)] ${initMinimizedClass}`, { id: 'nav-sidebar' }, [
+        DOM_Engine.create('div', 'header-logo-wrap h-20 flex items-center gap-4 px-8 border-b border-slate-100 shrink-0 transition-all duration-300', {}, [
+            DOM_Engine.create('div', 'w-10 h-10 bg-gradient-to-br from-indigo-600 to-blue-500 rounded-xl flex items-center justify-center shadow-md shrink-0', {}, [
+                DOM_Engine.create('i', 'fa-solid fa-layer-group text-white text-lg')
+            ]),
+            DOM_Engine.create('div', 'flex flex-col justify-center sidebar-text-wrap', {}, [
+                DOM_Engine.create('span', 'font-extrabold text-2xl text-slate-800 tracking-tighter leading-none', {}, ['C.E.P.U']),
+                DOM_Engine.create('span', 'text-[10px] font-bold text-emerald-500 tracking-widest mt-1', {}, ['ENTERPRISE ' + (localStorage.getItem('cepu_app_version') || 'TERBARU')])
+            ])
         ]),
         sidebarMenu, userCard, btnLogout
     ]);
 
     const header = DOM_Engine.create('header', 'glass h-20 sticky top-0 z-30 flex items-center justify-between px-6 lg:px-10 border-b border-slate-200/50', {}, [
         DOM_Engine.create('div', 'flex items-center gap-4', {}, [
-            DOM_Engine.create('button', 'lg:hidden w-10 h-10 flex items-center justify-center text-slate-600 hover:bg-slate-100 rounded-xl transition-colors', { onClick: toggleSidebar }, [DOM_Engine.create('i', 'fa-solid fa-bars text-lg')]),
-            DOM_Engine.create('h1', 'font-bold text-xl text-slate-800 tracking-tight', {}, ['Dashboard Utama'])
+            // [KILLER UX]: Tombol header kini berfungsi ganda. Geser di HP, Kecilkan di Laptop.
+            DOM_Engine.create('button', 'w-10 h-10 flex items-center justify-center text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 rounded-xl transition-colors shadow-sm bg-white border border-slate-200', { onClick: sysToggleMainSidebar }, [DOM_Engine.create('i', 'fa-solid fa-bars-staggered text-lg')]),
+            DOM_Engine.create('h1', 'font-bold text-xl text-slate-800 tracking-tight hidden sm:block', {}, ['Dashboard Utama'])
         ])
     ]);
 
     const workspace = DOM_Engine.create('div', 'p-6 lg:p-10 max-w-5xl mx-auto w-full relative z-10', { id: 'nav-workspace' });
 
-    const scrollArea = DOM_Engine.create('main', 'flex-1 overflow-y-auto bg-aurora relative', {}, [
+    const scrollArea = DOM_Engine.create('main', 'flex-1 overflow-y-auto bg-aurora relative hide-scrollbar', {}, [
         DOM_Engine.create('div', 'absolute inset-0 bg-[url("data:image/svg+xml,%3Csvg width=\'20\' height=\'20\' viewBox=\'0 0 20 20\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'%2394a3b8\' fill-opacity=\'0.05\' fill-rule=\'evenodd\'%3E%3Ccircle cx=\'3\' cy=\'3\' r=\'3\'/%3E%3Cg/%3E%3C/svg%3E")] pointer-events-none'),
         header, workspace
     ]);
 
-    const modalScanner = DOM_Engine.create('div', 'fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] hidden flex items-center justify-center p-4 opacity-0 transition-opacity duration-300', { id: 'dinas-modal' }, [
+    // Re-use modal scanner jika sudah ada agar memori tidak berat
+    const modalScanner = document.getElementById('dinas-modal') || DOM_Engine.create('div', 'fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] hidden flex items-center justify-center p-4 opacity-0 transition-opacity duration-300', { id: 'dinas-modal' }, [
         DOM_Engine.create('div', 'bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden transform scale-95 transition-transform border border-slate-100', { id: 'dinas-modal-content' }, [
             DOM_Engine.create('div', 'p-5 border-b flex justify-between items-center bg-slate-50', {}, [
                 DOM_Engine.create('h3', 'font-bold text-lg text-slate-800', {}, ['Scan Barcode POS']),
@@ -129,9 +162,8 @@
     root.appendChild(overlay);
     root.appendChild(sidebar);
     root.appendChild(scrollArea);
-    root.appendChild(modalScanner);
+    if(!document.getElementById('dinas-modal')) root.appendChild(modalScanner);
 
-  // [UPDATE KILLER UI]: Smart Auto-Routing Berdasarkan Otoritas (Role)
     if (isSuperAdmin) {
         sysNavigateTo(renderWorkspace_MasterDB, 'menu-master');
     } else {
@@ -139,12 +171,23 @@
     }
   }
 
-function toggleSidebar() {
-    SysState.ui.sidebarOpen = !SysState.ui.sidebarOpen;
-    document.getElementById('nav-sidebar').classList.toggle('-translate-x-full');
+// [SMART HYBRID TOGGLE ENGINE]
+function sysToggleMainSidebar() {
+    const sidebar = document.getElementById('nav-sidebar');
     const overlay = document.getElementById('nav-overlay');
-    overlay.classList.toggle('opacity-0');
-    overlay.classList.toggle('pointer-events-none');
+    
+    if (window.innerWidth < 1024) {
+        // Logika Mobile: Buka/Tutup Sidebar penuh (Sliding & Overlay)
+        SysState.ui.sidebarOpen = !SysState.ui.sidebarOpen;
+        sidebar.classList.toggle('-translate-x-full');
+        overlay.classList.toggle('opacity-0');
+        overlay.classList.toggle('pointer-events-none');
+    } else {
+        // Logika Desktop: Animasi Smooth Minimize ke ukuran Ikon
+        sidebar.classList.toggle('sidebar-minimized');
+        // Simpan status agar saat pindah menu tetap mengecil
+        SysState.ui.sidebarMinimized = sidebar.classList.contains('sidebar-minimized');
+    }
 }
 
 // ==========================================================
@@ -154,7 +197,7 @@ function toggleSidebar() {
 function sysNavigateTo(workspaceFunc, activeId) {
     // 1. Auto-Tutup sidebar jika digunakan di layar HP
     if (window.innerWidth < 1024 && SysState.ui.sidebarOpen) {
-        toggleSidebar();
+        sysToggleMainSidebar(); // <-- Gunakan Fungsi Baru
     }
     
     // 2. Eksekusi fungsi perubahan halaman
@@ -267,7 +310,17 @@ function action_getGPS(textId, iconId) {
                 }
                 if(SysState.dinas.isActive) checkEligibility_Pulang(); else checkEligibility_Berangkat();
             },
-            () => { sysShowToast("GPS gagal/ditolak.", "error"); }, { enableHighAccuracy: true }
+            (err) => { 
+                // [UX FIX]: Cegah Loading Abadi
+                sysShowToast("GPS gagal/timeout. Pastikan GPS aktif dan Anda di area terbuka.", "error"); 
+                const txtGps = document.getElementById(textId);
+                if(txtGps) {
+                    txtGps.textContent = "Gagal Mengunci GPS";
+                    txtGps.className = 'text-sm font-semibold text-rose-500';
+                    document.getElementById(iconId).className = "fa-solid fa-location-crosshairs text-rose-500 text-lg";
+                }
+            }, 
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 } // Timeout 10 Detik Mutlak
         );
     }
 }
@@ -348,12 +401,18 @@ function action_submitDinas(e) {
     const btn = document.getElementById('dinas-btn-submit');
     btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Memproses Keberangkatan...'; btn.disabled = true;
 
+    // [UPDATE LOGIKA ST]: Deteksi kosong atau teks menyusul
+    let inputST = document.getElementById('dinas-inp-nost').value.trim();
+    if (inputST === "" || inputST === "TIDAK ADA NO ST" || inputST === "ST MENYUSUL") {
+        inputST = "BELUM ADA NO ST"; // Pastikan string bersih tanpa kutip
+    }
+
     const payload = { 
-      noST: document.getElementById('dinas-inp-nost').value, 
+      noST: inputST, 
       customer: document.getElementById('dinas-inp-cust').value, 
       lokasi: document.getElementById('dinas-inp-lokasi').value, 
       kordinat: SysState.dinas.kordinat,
-      statusAbsensi: document.getElementById('dinas-sel-status').value // NEW: Kirim Status Absensi
+      statusAbsensi: document.getElementById('dinas-sel-status').value
     };
 
     google.script.run
@@ -366,6 +425,12 @@ function action_submitDinas(e) {
                 renderWorkspace_Dinas(); 
             } else { sysShowToast(res.message, "error"); btn.innerHTML = 'Mulai Perjalanan'; btn.disabled = false; }
         })
+        // [UX FIX]: Anti Loading Abadi jika koneksi Drop
+        .withFailureHandler((err) => {
+            sysShowToast("Koneksi terputus! Cek sinyal internet Anda.", "error"); 
+            btn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Coba Lagi'; 
+            btn.disabled = false;
+        })
         .api_submitPerjalananDinas(payload, SysState.user);
 }
 
@@ -377,7 +442,13 @@ function action_submitPulang() {
     const btn = document.getElementById('dinas-btn-pulang');
     btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Proses Kepulangan...'; btn.disabled = true;
 
-    const payload = { idTransaksi: SysState.dinas.data.idTransaksi, kordinatMasuk: SysState.dinas.kordinat };
+    // [UPDATE KILLER FIX]: Sertakan statusAbsensi agar Backend tahu apakah 
+    // sistem harus melakukan bypass GPS saat absen pulang atau tidak.
+    const payload = { 
+        idTransaksi: SysState.dinas.data.idTransaksi, 
+        kordinatMasuk: SysState.dinas.kordinat,
+        statusAbsensi: SysState.dinas.data.statusAbsensi || "H"
+    };
 
     google.script.run
         .withSuccessHandler((res) => {
@@ -388,21 +459,35 @@ function action_submitPulang() {
                 renderWorkspace_Dinas(); 
             } else { sysShowToast(res.message, "error"); btn.innerHTML = 'Absen Selesai (Pulang)'; btn.disabled = false; }
         })
+        // [UX FIX]: Anti Loading Abadi
+        .withFailureHandler((err) => {
+            sysShowToast("Koneksi terputus saat absen pulang!", "error"); 
+            btn.innerHTML = '<i class="fa-solid fa-house-chimney"></i> Absen Selesai (Pulang)'; 
+            btn.disabled = false;
+        })
         .api_submitPulangDinas(payload, SysState.user);
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-    const uS = localStorage.getItem('cepu_session'), dS = localStorage.getItem('cepu_dinas_state');
+    // [CRITICAL FIX]: sysCheckAndForceUpdate() DIHAPUS KARENA SUDAH DIGANTIKAN BOOTLOADER!
+    const uS = localStorage.getItem('cepu_session');
+    const dS = localStorage.getItem('cepu_dinas_state');
+    
     if (uS) { 
         SysState.user = JSON.parse(uS); 
-        if (dS) { SysState.dinas.isActive = true; SysState.dinas.data = JSON.parse(dS); }
-        renderView_MainLayout(); 
-    } else { renderView_Login(); }
+        if (dS) { 
+            SysState.dinas.isActive = true; 
+            SysState.dinas.data = JSON.parse(dS); 
+        }
+        renderView_MainLayout();
+    } else { 
+        renderView_Login(); 
+    }
 });
 
 // 1. FUNGSI UNTUK FORM KEBERANGKATAN
 function buildForm_NewDinas(initData = { statusOptions: [], historyST: [] }) {
-    const isSuperAdmin = (SysState.user.jabatan === 'Super Admin' || SysState.user.jabatan === 'Administrator');
+    const isSuperAdmin = sysIsSuperAdmin(SysState.user);
     
     const createField = (label, id, placeholder, extProps = {}) => DOM_Engine.create('div', '', {}, [
         DOM_Engine.create('label', 'block text-sm font-semibold text-slate-700 mb-1.5', {}, [label]),
@@ -420,11 +505,16 @@ function buildForm_NewDinas(initData = { statusOptions: [], historyST: [] }) {
     const stOptions = initData.historyST.map(h => DOM_Engine.create('option', '', { value: h.noST }));
     const stDataList = DOM_Engine.create('datalist', '', { id: 'list-history-st' }, stOptions);
 
+    // [UPDATE LOGIKA ST MENYUSUL]: Field tidak lagi required, auto-capslock, dan ada teks info.
     const fNoST = DOM_Engine.create('div', '', {}, [
-        DOM_Engine.create('label', 'block text-sm font-semibold text-slate-700 mb-1.5', {}, ['Nomor ST']),
-        DOM_Engine.create('input', 'input-premium w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5', { 
-            type: 'text', id: 'dinas-inp-nost', placeholder: 'Contoh: 0982', required: 'true', list: 'list-history-st', autocomplete: 'off',
+        DOM_Engine.create('label', 'block text-sm font-semibold text-slate-700 mb-1.5', {}, [
+            'Nomor ST ', 
+            DOM_Engine.create('span', 'text-[11px] text-rose-500 font-bold italic', {}, ['(*Kosongkan/ketik TIDAK ADA NO ST jika menyusul)'])
+        ]),
+        DOM_Engine.create('input', 'input-premium w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 uppercase', { 
+            type: 'text', id: 'dinas-inp-nost', placeholder: 'Masukan NO ST jika ada', list: 'list-history-st', autocomplete: 'off',
             onInput: function(e) {
+                this.value = this.value.toUpperCase(); // Auto Capslock Force
                 const val = this.value.trim();
                 const found = initData.historyST.find(h => h.noST === val);
                 if (found) {
@@ -436,7 +526,7 @@ function buildForm_NewDinas(initData = { statusOptions: [], historyST: [] }) {
         stDataList
     ]);
 
-    const fCust = createField('Nama Customer', 'dinas-inp-cust', 'MAJU BERSAMA', {
+    const fCust = createField('Nama Customer', 'dinas-inp-cust', 'Nama Customer tanpa PT (Contoh: SAT)', {
         onInput: function() { this.value = this.value.toUpperCase(); },
         onBlur: function() {
             let val = this.value.trim();
@@ -472,18 +562,30 @@ function buildForm_NewDinas(initData = { statusOptions: [], historyST: [] }) {
         }, ['[SUPER ADMIN] Bypass Validasi Berangkat']);
     }
 
-    // [BUG FIX]: Warna background Tailwind murni disuntikkan (bg-blue-600)
     const btnSubmit = DOM_Engine.create('button', 'bg-blue-600 hover:bg-blue-700 w-full text-white py-4 rounded-xl font-bold text-lg mt-8 opacity-50 cursor-not-allowed flex justify-center gap-2 shadow-md transition-colors', { type: 'submit', id: 'dinas-btn-submit', disabled: 'true' }, [DOM_Engine.create('i', 'fa-solid fa-paper-plane'), ' Mulai Perjalanan']);
 
-    return DOM_Engine.create('div', 'bg-white p-6 sm:p-8 rounded-3xl shadow-premium fade-in border border-slate-100', {}, [
-        DOM_Engine.create('h2', 'text-2xl font-bold text-slate-800 mb-6', {}, ['Form Keberangkatan']),
-        DOM_Engine.create('form', 'space-y-5', { onSubmit: action_submitDinas }, [groupStatus, fNoST, fCust, fLokasi, DOM_Engine.create('div', 'pt-4 border-t', {}, [DOM_Engine.create('label', 'block text-sm font-semibold mb-1', {}, ['Status GPS']), gpsBox]), DOM_Engine.create('div', '', {}, [scanBtn, scanStatus, bypassBtn]), btnSubmit])
+const infoSlides = [
+        { icon: 'fa-user-gear', title: 'Status Sesuai Jabatan', content: 'Mekanik: Gunakan H/BKF/BKS. Sales: Gunakan VC atau ST untuk pelacakan customer.' },
+        { icon: 'fa-file-circle-exclamation', title: 'Nomor ST Menyusul?', content: 'Ketik "TIDAK ADA NO ST". Sistem akan mengunci print hingga Anda mengupdate No ST Epicor nanti.' }
+    ];
+
+    return DOM_Engine.create('div', 'max-w-xl mx-auto', {}, [
+        CEPU_InfoSwiper.create('dinas', infoSlides), // Popup Info Card
+        DOM_Engine.create('div', 'bg-white p-6 sm:p-8 rounded-[2.5rem] shadow-premium fade-in border border-slate-100', {}, [
+            DOM_Engine.create('h2', 'text-2xl font-bold text-slate-800 mb-6', {}, ['Form Keberangkatan']),
+            DOM_Engine.create('form', 'space-y-5', { onSubmit: action_submitDinas }, [
+                groupStatus, fNoST, fCust, fLokasi, 
+                DOM_Engine.create('div', 'pt-4 border-t', {}, [DOM_Engine.create('label', 'block text-sm font-semibold mb-1', {}, ['Status GPS']), gpsBox]), 
+                DOM_Engine.create('div', '', {}, [scanBtn, scanStatus, bypassBtn]), 
+                btnSubmit
+            ])
+        ])
     ]);
 }
 
 // 2. FUNGSI UNTUK CARD KEPULANGAN
 function buildCard_ActiveDinas() {
-    const isSuperAdmin = (SysState.user.jabatan === 'Super Admin' || SysState.user.jabatan === 'Administrator');
+    const isSuperAdmin = sysIsSuperAdmin(SysState.user);
     
     const iconHeader = DOM_Engine.create('div', 'text-center border-b border-slate-100 pb-6 mb-6', {}, [
         DOM_Engine.create('div', 'w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center text-2xl mx-auto mb-4', {}, [DOM_Engine.create('i', 'fa-solid fa-car-side')]),
@@ -536,7 +638,7 @@ function buildCard_ActiveDinas() {
 
 // 3. FUNGSI UNTUK FORM SALES
 function buildForm_Sales(initData = { statusOptions: [] }) {
-    const isSuperAdmin = (SysState.user.jabatan === 'Super Admin' || SysState.user.jabatan === 'Administrator');
+    const isSuperAdmin = sysIsSuperAdmin(SysState.user);
 
     const optElements = initData.statusOptions.map(opt => DOM_Engine.create('option', '', { value: opt.code }, [ `${opt.code} - ${opt.desc}` ]));
     
@@ -664,6 +766,12 @@ function action_submitDinas_Sales(e) {
                 renderWorkspace_Dinas(); 
             } else { sysShowToast(res.message, "error"); btn.innerHTML = 'Mulai Absensi Sales'; btn.disabled = false; }
         })
+        // [UX FIX]: Anti Loading Abadi jika koneksi Drop
+        .withFailureHandler((err) => {
+            sysShowToast("Koneksi terputus! Cek sinyal internet Anda.", "error"); 
+            btn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Coba Lagi'; 
+            btn.disabled = false;
+        })
         .api_submitPerjalananDinas(payload, SysState.user);
 }
 
@@ -700,6 +808,27 @@ function renderWorkspace_MasterTable(sheetName, headers, rows) {
 
     const btnBack = DOM_Engine.create('button', 'text-slate-500 hover:text-amber-600 font-medium flex items-center gap-2 mb-6 transition-colors', { onClick: renderWorkspace_MasterDB }, [DOM_Engine.create('i', 'fa-solid fa-arrow-left'), ' Kembali ke DB Menu']);
     
+    // ==========================================================
+    // [NEW PATCH]: SEARCH BAR PENCARIAN DATA TABEL (NRPP/NAMA)
+    // ==========================================================
+    const tableSearchBar = DOM_Engine.create('div', 'mb-6 max-w-md fade-in', {}, [
+        DOM_Engine.create('div', 'bg-white border border-slate-200 rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-500/20 transition-all', {}, [
+            DOM_Engine.create('i', 'fa-solid fa-magnifying-glass text-slate-400'),
+            DOM_Engine.create('input', 'bg-transparent border-none outline-none text-sm font-semibold text-slate-700 w-full placeholder-slate-400', {
+                type: 'text',
+                placeholder: `Cari NRPP atau Nama di ${sheetName}...`,
+                onInput: (e) => {
+                    const searchTerm = String(e.target.value).toLowerCase().trim();
+                    document.querySelectorAll('.sys-data-row').forEach(row => {
+                        const rowData = row.textContent.toLowerCase();
+                        row.style.display = rowData.includes(searchTerm) ? '' : 'none';
+                    });
+                }
+            })
+        ])
+    ]);
+    // ==========================================================
+
     const headerTop = DOM_Engine.create('div', 'flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6', {}, [
         DOM_Engine.create('h2', 'text-2xl font-bold text-slate-800 flex items-center gap-3', {}, [DOM_Engine.create('i', 'fa-solid fa-table-list text-amber-500 text-xl'), sheetName]),
         // [UPDATE]: Kirim 'rows' agar Modal bisa mengekstrak data Dropdown
@@ -718,13 +847,15 @@ function renderWorkspace_MasterTable(sheetName, headers, rows) {
         const tdAction = DOM_Engine.create('td', 'px-5 py-3.5 border-b border-slate-100 sticky right-0 bg-white shadow-[-4px_0_6px_-1px_rgba(0,0,0,0.05)] z-10', {}, [
             DOM_Engine.create('div', 'flex items-center justify-center gap-2', {}, [btnEdit, btnDel])
         ]);
-        tds.push(tdAction); return DOM_Engine.create('tr', 'hover:bg-amber-50/30 transition-colors', {}, tds);
+        tds.push(tdAction);
+        // [NEW]: class 'sys-data-row' agar dikenali search bar
+        return DOM_Engine.create('tr', 'sys-data-row hover:bg-amber-50/30 transition-colors', {}, tds);
     });
 
     const tbody = DOM_Engine.create('tbody', 'bg-white', {}, trs);
     const table = DOM_Engine.create('table', 'min-w-full relative', {}, [thead, tbody]);
     const wrapTable = DOM_Engine.create('div', 'overflow-x-auto bg-white rounded-2xl shadow-premium border border-slate-200 max-h-[65vh] relative', {}, [table]);
-    container.appendChild(DOM_Engine.create('div', 'fade-in', {}, [btnBack, headerTop, wrapTable]));
+    container.appendChild(DOM_Engine.create('div', 'fade-in', {}, [btnBack, headerTop, tableSearchBar, wrapTable]));
 }
 
 // --- CARI DAN GANTI FUNGSI INI DI JS_Dashboard.html ---
@@ -996,20 +1127,21 @@ function renderWorkspace_KelolaKaryawan() {
             color: "from-blue-500 to-cyan-600",
             action: action_openSubMenu_AuditLog // <--- Panggil fungsi baru
         },
-        {
-            title: "Rekapitulasi Kinerja",
-            desc: "Ekspor data performa bulanan yang dikelompokkan berdasarkan Status Karyawan.",
+{
+            title: "Rekapitulasi Kerja",
+            desc: "Dashboard analitik global dan performa operasional enterprise.",
             icon: "fa-chart-pie",
             color: "from-emerald-500 to-teal-600",
-            action: () => sysShowToast("Modul Excel Rekap Kinerja sedang dalam perakitan...", "info")
+            action: renderWorkspace_GlobalAnalytics // <-- Pointer langsung ke UI Global
         },
         {
             title: "Statistik Operasional",
             desc: "Pemetaan beban kerja bulanan untuk setiap lokasi Customer (Group by Status).",
             icon: "fa-building-user",
             color: "from-amber-500 to-orange-600",
-            action: () => sysShowToast("Modul Analitik Customer sedang dalam perakitan...", "info")
+            action: renderWorkspace_OperationalAnalytics
         }
+        
     ];
 
     const gridCards = menus.map(m => {
@@ -1033,6 +1165,426 @@ function renderWorkspace_KelolaKaryawan() {
     container.appendChild(DOM_Engine.create('div', 'bg-aurora min-h-screen p-2', {}, [
         headerSec, DOM_Engine.create('div', 'grid grid-cols-1 md:grid-cols-2 gap-6 auto-rows-fr', {}, gridCards)
     ]));
+}
+
+let State_OpsFilters = { period: '1M', status: 'ALL', division: 'ALL', location: 'ALL' };
+let State_OpsFullNoST = [];  // Menyimpan seluruh list ST hasil fetch backend
+let State_OpsPage = 1;       // Halaman yang sedang dibuka
+let State_OpsLimit = 10;     // Jumlah baris per halaman (default 10)
+
+function renderWorkspace_OperationalAnalytics() {
+    DOM_Engine.clear('nav-workspace');
+    const container = document.getElementById('nav-workspace');
+
+    container.appendChild(DOM_Engine.create('div', 'p-20 text-center fade-in', {}, [
+        DOM_Engine.create('i', 'fa-solid fa-microchip fa-spin text-4xl text-amber-500 mb-4'),
+        DOM_Engine.create('p', 'text-slate-500 font-bold', {}, ['Menyusun Analitik Operasional Enterprise...'])
+    ]));
+
+google.script.run
+        .withSuccessHandler(res => {
+            DOM_Engine.clear('nav-workspace');
+            if (res.status === 'error') return sysShowToast(res.message, 'error');
+            
+            // [PATCH]: Simpan data ke global state untuk pagination
+            State_OpsFullNoST = res.data.noST || [];
+            State_OpsPage = 1; // Reset ke halaman 1 setiap ganti filter global
+            
+            const d = res.data;
+            const btnBack = DOM_Engine.create('button', 'text-slate-500 hover:text-amber-600 font-bold flex items-center gap-2 mb-6', { onClick: renderWorkspace_KelolaKaryawan }, [DOM_Engine.create('i', 'fa-solid fa-arrow-left'), 'Kembali']);
+            // 1. HEADER & FILTER BAR
+            const header = DOM_Engine.create('div', 'mb-10', {}, [
+                btnBack,
+                DOM_Engine.create('h2', 'text-3xl font-black text-slate-800', {}, ['Operational Intelligence']),
+                DOM_Engine.create('p', 'text-slate-500', {}, ['Visualisasi Beban Kerja, Analisa ST, dan Health-Check Divisi']),
+                _uiCreateOpsFilterBar()
+            ]);
+
+            // 2. AUTO-INSIGHTS BOX
+            const insightBox = DOM_Engine.create('div', 'mb-8 grid grid-cols-1 md:grid-cols-2 gap-4', {}, d.insights.map(txt => {
+                return DOM_Engine.create('div', 'bg-amber-50 border-l-4 border-amber-400 p-4 rounded-r-2xl flex items-center gap-3', {}, [
+                    DOM_Engine.create('i', 'fa-solid fa-lightbulb text-amber-500'),
+                    DOM_Engine.create('p', 'text-xs font-bold text-amber-800', {}, [txt])
+                ]);
+            }));
+
+            // 3. MAIN SUMMARY METRICS
+            const summaryGrid = DOM_Engine.create('div', 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-10', {}, [
+                _uiCreateMiniMetric('Total Aktivitas', d.summary.trips, 'fa-route', 'indigo'),
+                _uiCreateMiniMetric('Biaya Lapangan', `Rp ${d.summary.upd.toLocaleString('id-ID')}`, 'fa-wallet', 'emerald'),
+                _uiCreateMiniMetric('Service Tickets', d.summary.stCount, 'fa-file-invoice', 'amber'),
+                _uiCreateMiniMetric('Teknisi Aktif', d.summary.techCount, 'fa-user-gear', 'rose')
+            ]);
+
+            // 4. CHART SECTION (Line Trend)
+            const trendSection = DOM_Engine.create('div', 'bg-white rounded-[2.5rem] p-8 shadow-premium border border-slate-100 mb-10', {}, [
+                DOM_Engine.create('h4', 'font-black text-slate-800 mb-6', {}, ['Grafik Tren Trip Harian']),
+                _uiCreateOpsTrendLine(d.trend)
+            ]);
+
+            // 5. DETAIL TABLE: WORKLOAD PER NO ST
+            const stTableContainer = DOM_Engine.create('div', 'bg-slate-900 rounded-[2.5rem] p-6 sm:p-8 text-white shadow-2xl mb-10', { id: 'ops-st-table-area' }, [
+                _uiCreateSTDetailTable(State_OpsFullNoST)
+            ]);
+
+            const mainContent = DOM_Engine.create('div', 'p-2 sm:p-6 fade-in', {}, [
+                header, insightBox, summaryGrid, trendSection, stTableContainer
+            ]);
+            
+            container.appendChild(mainContent);
+        })
+        .api_getOperationalAnalytics(State_OpsFilters);
+}
+
+// ==========================================================
+// [HELPER UTILITY ENGINE] - OPERATIONAL ANALYTICS
+// ==========================================================
+
+/** * [FIXED]: Filter Bar Operasional dengan Protokol Anti-Selected-Bug
+ */
+function _uiCreateOpsFilterBar() {
+    const createSel = (key, opts) => {
+        const optionElements = opts.map(o => {
+            const attrs = { value: o.v };
+            // HANYA suntikkan atribut 'selected' jika nilainya benar-benar TRUE
+            if (State_OpsFilters[key] === o.v) attrs.selected = "selected";
+            return DOM_Engine.create('option', '', attrs, [o.t]);
+        });
+
+        return DOM_Engine.create('select', 'bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold outline-none cursor-pointer focus:ring-2 focus:ring-indigo-500/20 shadow-sm', {
+            onChange: (e) => { 
+                State_OpsFilters[key] = e.target.value; 
+                renderWorkspace_OperationalAnalytics(); 
+            }
+        }, optionElements);
+    };
+
+    return DOM_Engine.create('div', 'mt-6 flex flex-wrap gap-3 fade-in', {}, [
+        DOM_Engine.create('div', 'flex flex-col gap-1', {}, [
+            DOM_Engine.create('label', 'text-[9px] font-black text-slate-400 uppercase ml-1', {}, ['Periode']),
+            createSel('period', [{v:'ALL', t:'Seluruh Waktu'}, {v:'1M', t:'Bulan Ini'}, {v:'1W', t:'Minggu Ini'}, {v:'1Y', t:'Tahun Ini'}, {v:'1D', t:'Hari Ini'}])
+        ]),
+        DOM_Engine.create('div', 'flex flex-col gap-1', {}, [
+            DOM_Engine.create('label', 'text-[9px] font-black text-slate-400 uppercase ml-1', {}, ['Divisi']),
+            createSel('division', [{v:'ALL', t:'Semua Divisi'}, {v:'ASS SERVICE', t:'ASS SERVICE'}, {v:'ASS RENTAL', t:'ASS RENTAL'}])
+        ]),
+        DOM_Engine.create('div', 'flex flex-col gap-1', {}, [
+            DOM_Engine.create('label', 'text-[9px] font-black text-slate-400 uppercase ml-1', {}, ['Lokasi']),
+            createSel('location', [{v:'ALL', t:'Semua Lokasi'}, {v:'RFMC', t:'RFMC'}, {v:'SATELITE', t:'SATELITE'}, {v:'FMC', t:'FMC'}])
+        ]),
+        // TOMBOL EKSPOR PDF
+        DOM_Engine.create('button', 'bg-rose-600 hover:bg-rose-700 text-white px-6 py-2 rounded-xl text-xs font-black flex items-center gap-2 shadow-lg shadow-rose-500/20 transition-all active:scale-95 mb-0.5', {
+            onClick: () => sysExportOpsPDF()
+        }, [DOM_Engine.create('i', 'fa-solid fa-file-pdf'), 'EXPORT PDF'])
+    ]);
+}
+
+/** * [NEW ENGINE]: Handle Direct Download PDF via Base64
+ */
+function sysExportOpsPDF() {
+    sysShowToast('Membangun dokumen PDF secara langsung... Mohon tunggu', 'info');
+    
+    google.script.run
+        .withSuccessHandler(res => {
+            if (!res || res.status === 'error') {
+                const errMsg = res ? res.message : 'Koneksi Server Terputus';
+                return sysShowToast('Gagal: ' + errMsg, 'error');
+            }
+            
+            // Konversi Base64 string kembali menjadi Array Bytes
+            const byteCharacters = atob(res.base64);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            
+            // Rakit menjadi File PDF di browser
+            const blob = new Blob([byteArray], {type: 'application/pdf'});
+            
+            // Buat elemen link tersembunyi untuk auto-download
+            const link = document.createElement('a');
+            link.href = window.URL.createObjectURL(blob);
+            link.download = res.filename; // Nama file di set oleh server
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            sysShowToast('Laporan PDF berhasil diunduh ke perangkat Anda!', 'success');
+        })
+        .api_exportOperationalPDF(State_OpsFilters); 
+}
+
+/** * [PATCH]: Penambahan Tombol Export PDF pada Filter Bar
+ */
+function _uiCreateOpsFilterBar() {
+    const createSel = (key, opts) => {
+        const optionElements = opts.map(o => {
+            const attrs = { value: o.v };
+            if (State_OpsFilters[key] === o.v) attrs.selected = "selected";
+            return DOM_Engine.create('option', '', attrs, [o.t]);
+        });
+
+        return DOM_Engine.create('select', 'bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold outline-none cursor-pointer focus:ring-2 focus:ring-indigo-500/20 shadow-sm', {
+            onChange: (e) => { 
+                State_OpsFilters[key] = e.target.value; 
+                renderWorkspace_OperationalAnalytics(); 
+            }
+        }, optionElements);
+    };
+
+    // [UPDATE]: Menggunakan items-end dan menambahkan tombol Export
+    return DOM_Engine.create('div', 'mt-6 flex flex-wrap items-end gap-3 fade-in', {}, [
+        DOM_Engine.create('div', 'flex flex-col gap-1', {}, [
+            DOM_Engine.create('label', 'text-[9px] font-black text-slate-400 uppercase ml-1', {}, ['Periode']),
+            createSel('period', [{v:'ALL', t:'Seluruh Waktu'}, {v:'1M', t:'Bulan Ini'}, {v:'1W', t:'Minggu Ini'}, {v:'1Y', t:'Tahun Ini'}, {v:'1D', t:'Hari Ini'}])
+        ]),
+        DOM_Engine.create('div', 'flex flex-col gap-1', {}, [
+            DOM_Engine.create('label', 'text-[9px] font-black text-slate-400 uppercase ml-1', {}, ['Divisi']),
+            createSel('division', [{v:'ALL', t:'Semua Divisi'}, {v:'ASS SERVICE', t:'ASS SERVICE'}, {v:'ASS RENTAL', t:'ASS RENTAL'}])
+        ]),
+        DOM_Engine.create('div', 'flex flex-col gap-1', {}, [
+            DOM_Engine.create('label', 'text-[9px] font-black text-slate-400 uppercase ml-1', {}, ['Lokasi']),
+            createSel('location', [{v:'ALL', t:'Semua Lokasi'}, {v:'RFMC', t:'RFMC'}, {v:'SATELITE', t:'SATELITE'}, {v:'FMC', t:'FMC'}])
+        ]),
+        
+        // [NEW]: Tombol EXPORT PDF
+        DOM_Engine.create('button', 'bg-rose-600 hover:bg-rose-700 text-white px-6 py-2 rounded-xl text-xs font-black flex items-center gap-2 shadow-lg shadow-rose-500/20 transition-all active:scale-95 ml-auto', {
+            onClick: () => sysExportOpsPDF()
+        }, [DOM_Engine.create('i', 'fa-solid fa-file-pdf'), 'EXPORT PDF'])
+    ]);
+}
+
+
+// ==========================================================
+// [HELPER]: ST DETAIL TABLE WITH PAGINATION & ROW LIMIT
+// ==========================================================
+function _uiCreateSTDetailTable(data) {
+    if (!data || data.length === 0) return DOM_Engine.create('div', 'py-10 text-center text-slate-400 font-bold', {}, ['Tidak ada data ST yang sesuai filter.']);
+
+    // 1. Kalkulasi Pagination
+    const totalData = data.length;
+    const totalPages = Math.ceil(totalData / State_OpsLimit);
+    const startIdx = (State_OpsPage - 1) * State_OpsLimit;
+    const endIdx = startIdx + State_OpsLimit;
+    const paginatedData = data.slice(startIdx, endIdx);
+
+    // 2. Toolbar Atas (Limit Filter & Info)
+    const toolbar = DOM_Engine.create('div', 'flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6', {}, [
+        DOM_Engine.create('h4', 'font-bold text-lg flex items-center gap-3', {}, [
+            DOM_Engine.create('i', 'fa-solid fa-list-check text-amber-400'), 'Analisa Detail Per No. ST'
+        ]),
+        DOM_Engine.create('div', 'flex items-center gap-3 bg-white/5 px-3 py-1.5 rounded-xl border border-white/10', {}, [
+            DOM_Engine.create('span', 'text-[10px] font-bold text-white/50 uppercase tracking-widest', {}, ['Baris:']),
+            DOM_Engine.create('select', 'bg-transparent text-xs font-black text-amber-400 outline-none cursor-pointer', {
+                onChange: (e) => { 
+                    State_OpsLimit = parseInt(e.target.value); 
+                    State_OpsPage = 1; 
+                    refreshOpsSTTable(); 
+                }
+            }, [10, 25, 50].map(v => DOM_Engine.create('option', 'bg-slate-800', { value: v, selected: State_OpsLimit === v }, [String(v)])))
+        ])
+    ]);
+
+    // 3. Render Baris Tabel
+    const rows = paginatedData.map(s => DOM_Engine.create('tr', 'border-b border-white/5 hover:bg-white/5 transition-colors group', {}, [
+        DOM_Engine.create('td', 'py-4 px-2 text-sm font-black text-amber-400 whitespace-nowrap', {}, [s.st]),
+        DOM_Engine.create('td', 'py-4 px-2 text-xs opacity-80 group-hover:opacity-100 transition-opacity', {}, [
+            DOM_Engine.create('div', 'flex flex-col', {}, [
+                DOM_Engine.create('span', 'font-bold text-white', {}, [s.customer]),
+                // Sekarang s.lokasi akan menampilkan Area/Lokasi yang diinput saat berangkat
+                DOM_Engine.create('span', 'text-[10px] text-amber-500/70 italic mt-0.5', {}, [
+                    DOM_Engine.create('i', 'fa-solid fa-location-dot mr-1 text-[8px]'),
+                    s.lokasi
+                ])
+            ])
+        ]),
+        DOM_Engine.create('td', 'py-4 px-2 text-center text-sm font-bold', {}, [String(s.techs)]),
+        DOM_Engine.create('td', 'py-4 px-2 text-center text-sm font-bold', {}, [s.hours.toFixed(1) + ' Jam']),
+        DOM_Engine.create('td', 'py-4 px-2 text-right text-sm font-black text-emerald-400 whitespace-nowrap', {}, [`Rp ${s.upd.toLocaleString('id-ID')}`])
+    ]));
+
+    const tableEl = DOM_Engine.create('div', 'overflow-x-auto hide-scrollbar', {}, [
+        DOM_Engine.create('table', 'w-full text-left min-w-[700px]', {}, [
+            DOM_Engine.create('thead', 'border-b border-white/10', {}, [
+                DOM_Engine.create('tr', '', {}, [
+                    'NO ST', 
+                    'Customer & Lokasi', // [UPDATE]: Nama Header
+                    'Teknisi', 
+                    'Durasi', 
+                    'Total UPD'
+                ].map(h => DOM_Engine.create('th', 'py-4 px-2 text-[10px] font-black uppercase tracking-widest opacity-50 whitespace-nowrap', {}, [h])))
+            ]),
+            DOM_Engine.create('tbody', '', {}, rows)
+        ])
+    ]);
+
+    // 4. Pagination Controls (Footer)
+    const paginationControls = DOM_Engine.create('div', 'mt-8 flex flex-col sm:flex-row justify-between items-center gap-4 pt-6 border-t border-white/5', {}, [
+        DOM_Engine.create('p', 'text-[10px] font-bold text-white/40 tracking-widest', {}, [
+            `MENAMPILKAN ${startIdx + 1} - ${Math.min(endIdx, totalData)} DARI ${totalData} DATA`
+        ]),
+        DOM_Engine.create('div', 'flex items-center gap-2', {}, [
+            // Tombol Sebelumnya
+            DOM_Engine.create('button', `w-10 h-10 rounded-xl flex items-center justify-center transition-all ${State_OpsPage > 1 ? 'bg-white/10 hover:bg-amber-500 hover:text-slate-900' : 'opacity-20 cursor-not-allowed'}`, {
+                onClick: State_OpsPage > 1 ? () => { State_OpsPage--; refreshOpsSTTable(); } : null
+            }, [DOM_Engine.create('i', 'fa-solid fa-chevron-left')]),
+            
+            // Label Halaman
+            DOM_Engine.create('div', 'px-4 h-10 bg-white/5 border border-white/10 rounded-xl flex items-center gap-2', {}, [
+                DOM_Engine.create('span', 'text-xs font-black text-amber-400', {}, [String(State_OpsPage)]),
+                DOM_Engine.create('span', 'text-[10px] font-bold text-white/30', {}, [`/ ${totalPages}`])
+            ]),
+
+            // Tombol Selanjutnya
+            DOM_Engine.create('button', `w-10 h-10 rounded-xl flex items-center justify-center transition-all ${State_OpsPage < totalPages ? 'bg-white/10 hover:bg-amber-500 hover:text-slate-900' : 'opacity-20 cursor-not-allowed'}`, {
+                onClick: State_OpsPage < totalPages ? () => { State_OpsPage++; refreshOpsSTTable(); } : null
+            }, [DOM_Engine.create('i', 'fa-solid fa-chevron-right')])
+        ])
+    ]);
+
+    return DOM_Engine.create('div', 'fade-in', {}, [toolbar, tableEl, paginationControls]);
+}
+
+/** Fungsi Refresh Parsial untuk Tabel ST */
+function refreshOpsSTTable() {
+    const area = document.getElementById('ops-st-table-area');
+    if (area) {
+        DOM_Engine.clear('ops-st-table-area');
+        area.appendChild(_uiCreateSTDetailTable(State_OpsFullNoST));
+    }
+}
+
+// ==========================================================
+// [HELPER UTILITY ENGINE] - INTERACTIVE TREND LINE CHART
+// ==========================================================
+function _uiCreateOpsTrendLine(trendData) {
+    if (!trendData || trendData.length < 2) {
+        return DOM_Engine.create('div', 'py-10 text-center text-slate-400 font-bold border-2 border-dashed border-slate-100 rounded-[2.5rem]', {}, [
+            DOM_Engine.create('i', 'fa-solid fa-chart-line mb-2 block text-2xl opacity-20'),
+            'Data tren harian belum tersedia.'
+        ]);
+    }
+
+    const svgNS = "http://www.w3.org/2000/svg";
+    const maxVal = Math.max(...trendData.map(t => t.trip), 1);
+    
+    // Dimensi Kanvas SVG
+    const width = 1000; 
+    const height = 200;
+    const paddingX = 40;
+    const paddingY = 40;
+
+    // 1. TOOLTIP ENGINE (DOM Melayang yang disembunyikan secara default)
+    let tooltip = document.getElementById('ops-chart-tooltip');
+    if (!tooltip) {
+        tooltip = DOM_Engine.create('div', 'fixed hidden bg-slate-900/95 backdrop-blur-md text-white p-4 rounded-2xl shadow-2xl text-xs z-[999] pointer-events-none border border-white/10 min-w-[160px] transition-opacity duration-200', { id: 'ops-chart-tooltip' });
+        document.body.appendChild(tooltip);
+    }
+
+    // 2. KALKULASI TITIK KOORDINAT (X, Y)
+    const points = trendData.map((t, i) => {
+        const x = paddingX + (i / (trendData.length - 1)) * (width - 2 * paddingX);
+        const y = (height - paddingY) - (t.trip / maxVal) * (height - 2 * paddingY);
+        return { x, y, data: t };
+    });
+
+    const polylinePoints = points.map(p => `${p.x},${p.y}`).join(' ');
+
+    // 3. BANGUN SVG BERSERTA GRID BACKGROUND
+    const svg = document.createElementNS(svgNS, "svg");
+    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    svg.setAttribute("class", "w-full h-64 overflow-visible select-none mt-4 drop-shadow-sm");
+
+    // Grid Horizontal
+    [0, 0.5, 1].forEach(tick => {
+        const y = (height - paddingY) - (tick * (height - 2 * paddingY));
+        const line = document.createElementNS(svgNS, "line");
+        line.setAttribute("x1", paddingX); line.setAttribute("y1", y);
+        line.setAttribute("x2", width - paddingX); line.setAttribute("y2", y);
+        line.setAttribute("stroke", "#f1f5f9"); // Garis abu-abu super tipis
+        line.setAttribute("stroke-width", "1");
+        svg.appendChild(line);
+    });
+
+    // Garis Utama (Trend Line)
+    const line = document.createElementNS(svgNS, "polyline");
+    line.setAttribute("fill", "none");
+    line.setAttribute("stroke", "#6366f1"); // Indigo Tailwind
+    line.setAttribute("stroke-width", "4");
+    line.setAttribute("stroke-linecap", "round");
+    line.setAttribute("stroke-linejoin", "round");
+    line.setAttribute("points", polylinePoints);
+    line.setAttribute("class", "drop-shadow-lg");
+    svg.appendChild(line);
+
+    // 4. INJEKSI MARKERS (Titik Interaktif) & SUMBU X
+    points.forEach((p, i) => {
+        // Lingkaran Penanda (Dot)
+        const circle = document.createElementNS(svgNS, "circle");
+        circle.setAttribute("cx", p.x);
+        circle.setAttribute("cy", p.y);
+        circle.setAttribute("r", "5");
+        circle.setAttribute("fill", "white");
+        circle.setAttribute("stroke", "#6366f1");
+        circle.setAttribute("stroke-width", "3");
+        circle.setAttribute("class", "cursor-pointer transition-all duration-300 hover:r-8 hover:fill-amber-400 hover:stroke-amber-400");
+
+        // EVENT HOVER (Tampilkan Tooltip saat disentuh)
+        circle.addEventListener('mouseenter', (e) => {
+            DOM_Engine.clear('ops-chart-tooltip');
+            
+            // Format Tanggal untuk Tooltip (YYYY-MM-DD -> DD/MM/YYYY)
+            const dp = p.data.label.split('-');
+            const displayDate = dp.length === 3 ? `${dp[2]}/${dp[1]}/${dp[0]}` : p.data.label;
+
+            // Konten Tooltip Melayang
+            tooltip.appendChild(DOM_Engine.create('div', 'font-black text-amber-400 mb-3 border-b border-white/10 pb-2 text-center tracking-widest', {}, [displayDate]));
+            tooltip.appendChild(DOM_Engine.create('div', 'flex justify-between items-center gap-6 mb-2', {}, [
+                DOM_Engine.create('span', 'text-[10px] font-bold text-white/60 uppercase', {}, ['Total Trip:']),
+                DOM_Engine.create('span', 'font-black text-white text-sm', {}, [`${p.data.trip}`])
+            ]));
+            tooltip.appendChild(DOM_Engine.create('div', 'flex justify-between items-center gap-6', {}, [
+                DOM_Engine.create('span', 'text-[10px] font-bold text-white/60 uppercase', {}, ['Beban UPD:']),
+                DOM_Engine.create('span', 'font-black text-emerald-400 text-sm', {}, [`Rp ${Number(p.data.upd).toLocaleString('id-ID')}`])
+            ]));
+            
+            tooltip.classList.remove('hidden');
+            
+            // Kalkulasi Posisi Mouse agar Tooltip selalu mengikuti dengan presisi
+            const rect = e.target.getBoundingClientRect();
+            tooltip.style.left = (rect.left - 80) + 'px'; // Geser ke tengah titik
+            tooltip.style.top = (rect.top - 120) + 'px'; // Muncul di atas titik
+        });
+
+        // Sembunyikan Tooltip saat kursor menjauh
+        circle.addEventListener('mouseleave', () => {
+            tooltip.classList.add('hidden');
+        });
+
+        svg.appendChild(circle);
+
+        // Cetak Label Sumbu X (Tanggal di Bawah)
+        // Dibatasi agar tidak saling bertumpuk jika datanya banyak (30 hari)
+        if (i % Math.ceil(trendData.length / 8) === 0 || i === trendData.length - 1) {
+            const text = document.createElementNS(svgNS, "text");
+            text.setAttribute("x", p.x);
+            text.setAttribute("y", height - 5); 
+            text.setAttribute("text-anchor", "middle");
+            text.setAttribute("fill", "#94a3b8"); // Slate-400
+            text.setAttribute("font-size", "10");
+            text.setAttribute("font-weight", "bold");
+            
+            const dp = p.data.label.split('-');
+            text.textContent = dp.length === 3 ? `${dp[2]}/${dp[1]}` : p.data.label; // Format: DD/MM
+            svg.appendChild(text);
+        }
+    });
+
+    // Bungkus dengan overflow-x-auto agar aman jika dibuka di HP
+    return DOM_Engine.create('div', 'w-full overflow-x-auto hide-scrollbar', {}, [
+        DOM_Engine.create('div', 'min-w-[700px]', {}, [svg])
+    ]);
 }
 
 // ==============================================================================
@@ -1355,22 +1907,90 @@ function buildUI_ApprovalDashboard(logs) {
         }
     };
 
+    // [UPDATE UX]: Smart Check-All yang menghormati baris yang sedang difilter (terlihat)
     const toggleCheckAll = (checked) => {
         State_BulkApproval = [];
-        document.querySelectorAll('.chk-approve-item').forEach(chk => {
-            chk.checked = checked;
-            if (checked) State_BulkApproval.push(chk.value);
+        document.querySelectorAll('.approval-row-item').forEach(row => {
+            const chk = row.querySelector('.chk-approve-item');
+            if (chk) {
+                // Hanya centang jika baris TIDAK sedang disembunyikan oleh filter
+                if (row.style.display !== 'none') {
+                    chk.checked = checked;
+                    if (checked) State_BulkApproval.push(chk.value);
+                } else {
+                    chk.checked = false; 
+                }
+            }
         });
-        toggleCheckbox(null, false);
+        toggleCheckbox(null, false); // Panggil untuk update teks counter
     };
+
+    // [IN-MEMORY DOM FILTER ENGINE]
+    const executeFilter = () => {
+        const searchTerm = document.getElementById('filter-search-approval').value.toLowerCase();
+        const statusFilter = document.getElementById('filter-status-approval').value;
+        
+        document.querySelectorAll('.approval-row-item').forEach(row => {
+            const txt = row.getAttribute('data-search');
+            const stat = row.getAttribute('data-status');
+            
+            const matchSearch = txt.includes(searchTerm);
+            const matchStatus = (statusFilter === 'ALL') || (stat === statusFilter);
+            
+            if (matchSearch && matchStatus) {
+                row.style.display = ''; // Munculkan
+            } else {
+                row.style.display = 'none'; // Sembunyikan
+                // [SECURITY]: Uncheck otomatis jika disembunyikan agar tidak tereksekusi buta
+                const chk = row.querySelector('.chk-approve-item');
+                if (chk && chk.checked) {
+                    chk.checked = false;
+                    toggleCheckbox(chk.value, false);
+                }
+            }
+        });
+        
+        // Reset Checkbox "Select All" di header
+        const mainChk = document.getElementById('chk-all-approval');
+        if(mainChk) mainChk.checked = false;
+    };
+
+    // [UI BUILDER]: Enterprise Filter Bar
+    const filterBar = DOM_Engine.create('div', 'bg-white border border-slate-200 p-4 rounded-2xl mb-4 flex flex-col md:flex-row justify-between items-center gap-4 shadow-sm fade-in-up', {}, [
+        DOM_Engine.create('div', 'flex items-center gap-3 w-full md:w-auto bg-slate-50 px-4 py-2.5 rounded-xl border border-slate-200 focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-100 transition-all', {}, [
+            DOM_Engine.create('i', 'fa-solid fa-magnifying-glass text-slate-400'),
+            DOM_Engine.create('input', 'bg-transparent border-none outline-none text-sm font-semibold text-slate-700 w-full md:w-64 placeholder-slate-400', {
+                id: 'filter-search-approval', type: 'text', placeholder: 'Cari Personel, NRPP, atau Customer...',
+                onInput: executeFilter
+            })
+        ]),
+        DOM_Engine.create('div', 'flex items-center gap-3 w-full md:w-auto', {}, [
+            DOM_Engine.create('label', 'text-xs font-bold text-slate-500 uppercase tracking-wider', {}, ['Kategori Status:']),
+            DOM_Engine.create('select', 'input-premium bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-700 outline-none cursor-pointer', {
+                id: 'filter-status-approval', onChange: executeFilter
+            }, [
+                DOM_Engine.create('option', '', { value: 'ALL' }, ['Semua Dokumen']),
+                DOM_Engine.create('option', '', { value: 'pending' }, ['Menunggu Approval']),
+                DOM_Engine.create('option', '', { value: 'anomali' }, ['Anomali / Sidang']),
+                DOM_Engine.create('option', '', { value: 'terkunci' }, ['Terkunci (Belum Print)'])
+            ])
+        ])
+    ]);
 
     const trs = logs.map(log => {
         let jamMasukUI, statusUI, rowBg = 'hover:bg-slate-50/50';
+        let rowStatusType = 'pending'; // Default klasifikasi untuk filter
+
         if (log.isAnomali) {
             rowBg = 'bg-rose-50/30 hover:bg-rose-50';
+            rowStatusType = 'anomali';
             jamMasukUI = DOM_Engine.create('div', 'flex items-center gap-2 text-rose-500', {}, [DOM_Engine.create('i', 'fa-solid fa-triangle-exclamation animate-pulse'), DOM_Engine.create('span', 'text-sm font-extrabold', {}, ['AUTO-CHECKOUT (23:59)'])]);
             statusUI = DOM_Engine.create('span', 'text-[10px] font-bold px-3 py-1.5 rounded-full bg-rose-100 text-rose-600 shadow-sm', {}, ['ANOMALI / SIDANG']);
         } else {
+            // Deteksi status untuk klasifikasi filter
+            if (log.persetujuan.toUpperCase().includes('APPROVED')) rowStatusType = 'approved';
+            else if (log.statusKlaim.toUpperCase().includes('SUDAH')) rowStatusType = 'terkunci';
+
             jamMasukUI = DOM_Engine.create('span', 'text-sm font-bold text-slate-700', {}, [log.waktuMasuk, ' WIB']);
             statusUI = DOM_Engine.create('span', 'text-[10px] font-bold px-3 py-1.5 rounded-full bg-slate-100 text-slate-600 shadow-sm', {}, [log.persetujuan]);
         }
@@ -1389,35 +2009,68 @@ function buildUI_ApprovalDashboard(logs) {
             aksiButtons.push(btnUnlock);
         }
 
-        return DOM_Engine.create('tr', `${rowBg} transition-colors border-b border-slate-100`, {}, [
-            DOM_Engine.create('td', 'px-5 py-4 text-center', {}, [DOM_Engine.create('input', 'chk-approve-item w-5 h-5 text-indigo-600 rounded border-slate-300 cursor-pointer', { type: 'checkbox', value: log.idTransaksi, onChange: (e) => toggleCheckbox(e.target.value, e.target.checked) })]),
-            DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap', {}, [DOM_Engine.create('p', 'text-sm font-extrabold text-slate-800', {}, [log.nama]), DOM_Engine.create('p', 'text-[10px] font-bold text-slate-400 uppercase tracking-wider', {}, [log.nrpp])]),
-            DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap text-sm font-bold text-slate-700', {}, [log.customer]),
+        // [UX FIX]: Background solid untuk kolom Sticky (Sinkronisasi dengan hover efek baris)
+        let stickyBg = log.isAnomali ? 'bg-rose-50 group-hover:bg-rose-100' : 'bg-white group-hover:bg-slate-50';
+
+        // [UX UPDATE]: Injeksi kolom UPD ke dalam baris data
+        return DOM_Engine.create('tr', `approval-row-item ${rowBg} transition-colors border-b border-slate-100 hover:z-20 relative group`, {
+            'data-search': `${log.nama} ${log.nrpp} ${log.customer}`.toLowerCase(),
+            'data-status': rowStatusType
+        }, [
+            // Freeze Area (0px - 410px)
+            DOM_Engine.create('td', `w-[60px] min-w-[60px] px-3 py-4 text-center sticky left-0 ${stickyBg} z-10`, {}, [DOM_Engine.create('input', 'chk-approve-item w-5 h-5 text-indigo-600 rounded border-slate-300 cursor-pointer', { type: 'checkbox', value: log.idTransaksi, onChange: (e) => toggleCheckbox(e.target.value, e.target.checked) })]),
+            DOM_Engine.create('td', `w-[110px] min-w-[110px] px-3 py-4 whitespace-nowrap text-center sticky left-[60px] ${stickyBg} z-10`, {}, [DOM_Engine.create('div', 'flex items-center justify-center', {}, aksiButtons)]),
+            DOM_Engine.create('td', `w-[240px] min-w-[240px] px-5 py-4 whitespace-nowrap sticky left-[170px] ${stickyBg} z-10 shadow-[4px_0_6px_-1px_rgba(0,0,0,0.05)] border-r border-slate-100`, {}, [DOM_Engine.create('p', 'text-sm font-extrabold text-slate-800 truncate max-w-[200px]', {}, [log.nama]), DOM_Engine.create('p', 'text-[10px] font-bold text-slate-400 uppercase tracking-wider', {}, [log.nrpp])]),
+            
+            // Scrollable Area (Normal Columns)
+            DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap', {}, [
+                DOM_Engine.create('p', 'text-sm font-bold text-slate-700', {}, [log.customer]),
+                DOM_Engine.create('p', 'text-[10px] text-slate-500 font-medium mt-0.5 truncate max-w-[200px]', {}, [
+                    DOM_Engine.create('i', 'fa-solid fa-location-dot mr-1 text-slate-400'),
+                    log.lokasi || "-"
+                ])
+            ]),
             DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap text-sm text-slate-500 font-medium', {}, [log.waktuKeluar]),
             DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap', {}, [jamMasukUI]),
-            DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap text-center', {}, [statusUI]),
-            DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap text-center', {}, [DOM_Engine.create('div', 'flex items-center justify-center', {}, aksiButtons)]) 
+            
+            // [NEW COLUMN]: UPD Value dengan format Rupiah
+            DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap text-sm font-extrabold text-emerald-600 text-right', {}, [
+                log.nominal ? `Rp ${Number(log.nominal).toLocaleString('id-ID')}` : 'Rp 0'
+            ]),
+            
+            DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap text-center', {}, [statusUI])
         ]);
     });
 
-    const thead = DOM_Engine.create('thead', 'bg-slate-50/80 border-b border-slate-200', {}, [
-        DOM_Engine.create('tr', '', {}, [
-            DOM_Engine.create('th', 'px-5 py-4 text-center', {}, [DOM_Engine.create('input', 'w-5 h-5 cursor-pointer', { type: 'checkbox', onChange: (e) => toggleCheckAll(e.target.checked) })]), 
-            ...['Personel', 'Customer', 'Jam Keluar', 'Jam Masuk', 'Status', 'Aksi'].map(h => DOM_Engine.create('th', 'px-5 py-4 text-left text-xs font-extrabold text-slate-500 uppercase tracking-widest', {}, [h]))
-        ])
+    // [UX UPDATE]: Menambahkan header UPD pada susunan sticky header
+    const theadThs = [
+        DOM_Engine.create('th', 'w-[60px] min-w-[60px] px-3 py-4 text-center sticky top-0 left-0 bg-slate-50 z-30 shadow-sm', {}, [
+            DOM_Engine.create('input', 'w-5 h-5 cursor-pointer', { id: 'chk-all-approval', type: 'checkbox', onChange: (e) => toggleCheckAll(e.target.checked) })
+        ]),
+        DOM_Engine.create('th', 'w-[110px] min-w-[110px] px-3 py-4 text-center text-xs font-extrabold text-slate-500 uppercase tracking-widest sticky top-0 left-[60px] bg-slate-50 z-30 shadow-sm', {}, ['Aksi']),
+        DOM_Engine.create('th', 'w-[240px] min-w-[240px] px-5 py-4 text-left text-xs font-extrabold text-slate-500 uppercase tracking-widest sticky top-0 left-[170px] bg-slate-50 z-30 shadow-[4px_2px_6px_-1px_rgba(0,0,0,0.05)] border-r border-slate-200', {}, ['Personel']),
+        
+        // [SCROLLABLE HEADERS]
+        ...['Customer & Lokasi', 'Jam Keluar', 'Jam Masuk', 'UPD', 'Status'].map(h => {
+            // Berikan perataan kanan khusus untuk header UPD
+            const isUpd = h === 'UPD';
+            return DOM_Engine.create('th', `px-5 py-4 ${isUpd ? 'text-right' : 'text-left'} text-xs font-extrabold text-slate-500 uppercase tracking-widest sticky top-0 bg-slate-50/95 backdrop-blur-md z-20 shadow-sm`, {}, [h]);
+        })
+    ];
+
+      const thead = DOM_Engine.create('thead', '', {}, [
+        DOM_Engine.create('tr', '', {}, theadThs)
     ]);
 
+    // [FINAL RENDER]: Injeksi variabel `filterBar` ke dalam wadah (Container)
     container.appendChild(DOM_Engine.create('div', 'bg-aurora min-h-screen p-2', {}, [
-        headerSec, bulkActionBar, 
-        DOM_Engine.create('div', 'glass overflow-x-auto rounded-[2rem] shadow-premium border border-white fade-in-up', {}, [
-            DOM_Engine.create('table', 'min-w-full', {}, [thead, DOM_Engine.create('tbody', 'bg-white/40', {}, trs)])
+        headerSec, filterBar, bulkActionBar, 
+        DOM_Engine.create('div', 'glass overflow-auto max-h-[65vh] rounded-[2rem] shadow-premium border border-white fade-in-up relative hide-scrollbar', {}, [
+            DOM_Engine.create('table', 'min-w-full relative', {}, [thead, DOM_Engine.create('tbody', 'bg-white/40', {}, trs)])
         ])
     ]));
-}
+  }
 
-// ==========================================================
-// ELEGANT UNLOCK MODAL & LOGIC
-// ==========================================================
 // ==========================================================
 // ELEGANT UNLOCK MODAL & LOGIC (BUG FIX: API ROUTING & ERROR HANDLING)
 // ==========================================================
@@ -1770,52 +2423,94 @@ function executeExcelExport(sheetName, dataMatrix, btnElement, originalHtml) {
     }
 }
 
-// ==============================================================================
-// MODUL USER: UI LOG PERJALANAN PRIBADI & ESTIMASI UPD
-// ==============================================================================
-
 function renderWorkspace_LogPribadi() {
-    DOM_Engine.clear('nav-workspace');
-    const container = document.getElementById('nav-workspace');
+    // 1. TANGKAP NILAI FILTER SEBELUM LAYAR DIHANCURKAN
+    const elBulan = document.getElementById('filter-bulan');
+    const elTahun = document.getElementById('filter-tahun');
     
-    container.appendChild(DOM_Engine.create('div', 'flex flex-col items-center justify-center py-20 fade-in', {}, [
-        DOM_Engine.create('i', 'fa-solid fa-file-invoice fa-spin text-4xl text-blue-500 mb-4'),
-        DOM_Engine.create('p', 'text-slate-500 font-medium tracking-wide', {}, ['Menarik riwayat Surat Tugas dan kalkulasi UPD...'])
-    ]));
+    let now = new Date();
+    let valBulan = elBulan ? elBulan.value : String(now.getMonth() + 1).padStart(2, '0');
+    let valTahun = elTahun ? elTahun.value : String(now.getFullYear());
 
-    google.script.run.withSuccessHandler((res) => {
-        if (res.status === 'success') buildUI_LogPribadi(res.data);
-        else { sysShowToast(res.message, 'error'); renderWorkspace_Dinas(); }
-    }).api_getLogPribadi(SysState.user);
+    // 2. FORMAT JADI STRING PERIODE (Contoh: "04-2026")
+    let targetPeriode = String(valBulan).padStart(2, '0') + "-" + valTahun;
+
+    // 3. BARU TAMPILKAN LOADING SPINNER
+    const container = document.getElementById('nav-workspace');
+    container.innerHTML = '<div class="flex flex-col items-center justify-center h-64"><i class="fa-solid fa-spinner fa-spin text-4xl text-blue-500 mb-4"></i><p class="font-bold text-slate-600">Sinkronisasi Riwayat...</p></div>';
+
+    google.script.run
+        .withSuccessHandler((res) => {
+            if(res.status === "success") {
+                buildUI_LogPribadi(res.data, targetPeriode); // Kirim targetPeriode
+            } else {
+                container.innerHTML = `<div class="p-10 text-center text-red-500"><b>Error:</b> ${res.message}</div>`;
+            }
+        })
+        .withFailureHandler((err) => {
+            container.innerHTML = `<div class="p-10 text-center text-red-500"><b>Koneksi Gagal:</b> ${err.message}</div>`;
+        })
+        .api_getLogPribadi(SysState.user, targetPeriode); // Kirim targetPeriode ke BE
 }
 
-// --- CARI DAN GANTI FUNGSI INI DI JS_Dashboard.html ---
-
-function buildUI_LogPribadi(groupedData) {
+function buildUI_LogPribadi(groupedData, targetPeriode) {
     DOM_Engine.clear('nav-workspace');
     const container = document.getElementById('nav-workspace');
 
-    const headerSec = DOM_Engine.create('div', 'mb-8 fade-in flex items-end justify-between', {}, [
-        DOM_Engine.create('div', '', {}, [
-            DOM_Engine.create('h2', 'text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-3', {}, [
-                DOM_Engine.create('div', 'p-2 bg-blue-100 rounded-xl', {}, [DOM_Engine.create('i', 'fa-solid fa-map-location-dot text-blue-600')]),
-                'Riwayat Surat Tugas'
-            ]),
-            DOM_Engine.create('p', 'text-slate-500 text-sm mt-2 ml-14', {}, ['Daftar aktivitas perjalanan dinas Anda dan estimasi akumulasi UPD.'])
-        ]),
-        DOM_Engine.create('button', 'bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 px-4 py-2 rounded-xl font-bold text-sm shadow-sm flex items-center gap-2 transition-all', { onClick: renderWorkspace_LogPribadi }, [DOM_Engine.create('i', 'fa-solid fa-rotate-right'), 'Refresh'])
+    // Pecah targetPeriode (misal "04-2026") kembali jadi angka untuk UI
+    let targetBulan = parseInt(targetPeriode.split('-')[0], 10);
+    let targetTahun = parseInt(targetPeriode.split('-')[1], 10);
+
+    const bulanNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+
+    // PENULISAN ATRIBUT SELECTED YANG BENAR UNTUK DOM ENGINE
+    const optBulan = bulanNames.map((nama, idx) => {
+        let attrs = { value: idx + 1 };
+        if ((idx + 1) === targetBulan) attrs.selected = 'true';
+        return DOM_Engine.create('option', '', attrs, [nama]);
+    });
+
+    const optTahun = [2025, 2026, 2027].map(y => {
+        let attrs = { value: y };
+        if (y === targetTahun) attrs.selected = 'true';
+        return DOM_Engine.create('option', '', attrs, [y]);
+    });
+
+    const filterCtrl = DOM_Engine.create('div', 'flex items-center gap-2 mt-4 sm:mt-0', {}, [
+        DOM_Engine.create('select', 'bg-white border border-slate-200 text-slate-700 text-sm rounded-xl px-3 py-2 font-bold', { id: 'filter-bulan', onChange: renderWorkspace_LogPribadi }, optBulan),
+        DOM_Engine.create('select', 'bg-white border border-slate-200 text-slate-700 text-sm rounded-xl px-3 py-2 font-bold', { id: 'filter-tahun', onChange: renderWorkspace_LogPribadi }, optTahun),
+        DOM_Engine.create('button', 'bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 w-9 h-9 rounded-xl shadow-sm flex items-center justify-center', { onClick: renderWorkspace_LogPribadi }, [DOM_Engine.create('i', 'fa-solid fa-rotate-right')])
     ]);
 
-    const stKeys = Object.keys(groupedData);
+    const headerSec = DOM_Engine.create('div', 'mb-8 fade-in flex flex-col sm:flex-row items-start sm:items-end justify-between bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100', {}, [
+        DOM_Engine.create('div', '', {}, [
+            DOM_Engine.create('h2', 'text-2xl font-extrabold text-slate-900 tracking-tight flex items-center gap-3', {}, [
+                DOM_Engine.create('div', 'p-2.5 bg-blue-100 rounded-xl', {}, [DOM_Engine.create('i', 'fa-solid fa-calendar-days text-blue-600 text-lg')]),
+                'Riwayat Perjalanan (UPD)'
+            ]),
+            DOM_Engine.create('p', 'text-slate-500 text-xs mt-2 ml-14 font-medium', {}, ['Filter aktivitas dinas berdasarkan bulan.'])
+        ]),
+        filterCtrl
+    ]);
+
+    const stKeys = Object.keys(groupedData).sort((a, b) => {
+        if (a === "BELUM ADA NO ST") return -1;
+        if (b === "BELUM ADA NO ST") return 1;
+        return b.localeCompare(a);
+    });
+
     if (stKeys.length === 0) {
-        container.appendChild(DOM_Engine.create('div', 'bg-slate-50 min-h-screen p-2', {}, [headerSec, DOM_Engine.create('div', 'glass text-center py-16 rounded-[2rem] border border-white shadow-premium', {}, [
-            DOM_Engine.create('i', 'fa-solid fa-folder-open text-5xl text-slate-300 mb-4'),
-            DOM_Engine.create('h3', 'text-lg font-bold text-slate-500', {}, ['Belum ada riwayat perjalanan dinas.'])
-        ])]));
+        container.appendChild(DOM_Engine.create('div', 'bg-slate-50 min-h-screen p-2', {}, [
+            headerSec,
+            DOM_Engine.create('div', 'glass text-center py-16 rounded-[2rem] border border-white shadow-premium mt-4', {}, [
+                DOM_Engine.create('i', 'fa-solid fa-folder-open text-5xl text-slate-300 mb-4'),
+                DOM_Engine.create('h3', 'text-lg font-bold text-slate-700', {}, [`Tidak ada data di ${bulanNames[targetBulan-1]} ${targetTahun}`])
+            ])
+        ]));
         return;
     }
 
-const accordions = stKeys.map(st => {
+    const accordions = stKeys.map(st => {
         const logs = groupedData[st];
         let totalUPD = 0; let totalDurasi = 0;
         logs.forEach(l => { totalUPD += l.nominal; totalDurasi += parseFloat(l.durasi); });
@@ -1876,9 +2571,13 @@ const accordions = stKeys.map(st => {
             DOM_Engine.create('tr', '', {}, ['Customer Tujuan', 'Waktu Keluar', 'Durasi', 'Nominal UPD', 'Status Jalan', 'Status Persetujuan', 'Status Print'].map(h => DOM_Engine.create('th', 'px-5 py-4 text-left text-xs font-extrabold text-slate-400 uppercase tracking-widest', {}, [h])))
         ]);
 
-        // [KILLER FEATURE]: Tombol Cetak Terkunci Secara Dinamis
+        // [KILLER FEATURE]: Tombol Cetak Terkunci Secara Dinamis & Update ST Epicor
         let btnCetakPDF;
-        if (isAlreadyPrinted) {
+        if (st === "BELUM ADA NO ST") {
+            btnCetakPDF = DOM_Engine.create('button', 'ml-3 px-4 py-2 bg-rose-500 hover:bg-rose-600 text-white border border-rose-600 text-xs font-bold rounded-lg shadow-md transition-all flex items-center gap-2 animate-pulse', {
+                onClick: () => action_openInputSTModal(st, logs) // Buka Modal Input ST
+            }, [DOM_Engine.create('i', 'fa-solid fa-pen-to-square'), 'Input No ST Epicor']);
+        } else if (isAlreadyPrinted) {
             btnCetakPDF = DOM_Engine.create('button', 'ml-3 px-3 py-1.5 bg-slate-800 text-slate-500 border border-slate-700 text-xs font-bold rounded-lg shadow-sm flex items-center gap-2 cursor-not-allowed', { 
                 disabled: true, title: 'Dokumen sudah pernah dicetak dan dikunci.' 
             }, [DOM_Engine.create('i', 'fa-solid fa-lock'), 'Terkunci (Sudah Print)']);
@@ -1922,7 +2621,17 @@ const accordions = stKeys.map(st => {
         ]);
     });
 
-    container.appendChild(DOM_Engine.create('div', 'bg-slate-50 min-h-screen p-2', {}, [headerSec, DOM_Engine.create('div', '', {}, accordions)]));
+    // --- [INJEKSI SWIPER CARD INFO] ---
+    const logSlides = [
+        { icon: 'fa-pen-to-square', title: 'Input No ST Epicor', content: 'Klik tombol merah "Input No ST Epicor" pada log yang masih berstatus BELUM ADA NO ST.' },
+        { icon: 'fa-object-group', title: 'Penggabungan Log', content: 'Anda bisa mencentang beberapa perjalanan sekaligus untuk digabungkan ke satu No ST Epicor yang baru.' }
+    ];
+
+    container.appendChild(DOM_Engine.create('div', 'bg-slate-50 min-h-screen p-2', {}, [
+        CEPU_InfoSwiper.create('log-upd', logSlides), // Memunculkan Popup Info di atas Header
+        headerSec, 
+        DOM_Engine.create('div', '', {}, accordions)
+    ]));
 }
 
 // FUNGSI PENGHUBUNG API PENGUNCI
@@ -1935,40 +2644,154 @@ function action_lockPrintStatus(stNumber) {
     }).api_updatePrintStatus(stNumber, SysState.user);
 }
 
-// --- WORKSPACE CETAK DEKLARASI ---
+// --- WORKSPACE CETAK DEKLARASI (UI BARU TAHUNAN) ---
+let State_DeklarasiTahun = new Date().getFullYear();
+
 function renderWorkspace_CetakDeklarasi() {
     DOM_Engine.clear('nav-workspace');
     const container = document.getElementById('nav-workspace');
     
     container.appendChild(DOM_Engine.create('div', 'flex flex-col items-center justify-center py-20 fade-in', {}, [
-        DOM_Engine.create('i', 'fa-solid fa-file-contract fa-spin text-4xl text-purple-500 mb-4'),
-        DOM_Engine.create('p', 'text-slate-500 font-medium tracking-wide', {}, ['Memuat data form deklarasi perjalanan...'])
+        DOM_Engine.create('i', 'fa-solid fa-calendar-days fa-spin text-4xl text-purple-500 mb-4'),
+        DOM_Engine.create('p', 'text-slate-500 font-medium tracking-wide', {}, [`Mengkompilasi data arsip tahun ${State_DeklarasiTahun}...`])
     ]));
 
-    // Re-use API yang sama untuk mengambil Log Pribadi (Kompilasi Grup ST)
     google.script.run.withSuccessHandler((res) => {
-        if (res.status === 'success') buildUI_CetakDeklarasi(res.data);
+        if (res.status === 'success') buildUI_CetakDeklarasi_Tahunan(res.data, State_DeklarasiTahun);
         else { sysShowToast(res.message, 'error'); renderWorkspace_Dinas(); }
-    }).api_getLogPribadi(SysState.user);
+    }).api_getSummaryDeklarasiTahunan(SysState.user, State_DeklarasiTahun);
 }
 
-// --- UI DASHBOARD CETAK DEKLARASI ---
-function buildUI_CetakDeklarasi(groupedData) {
+function buildUI_CetakDeklarasi_Tahunan(summaryData, tahun) {
     DOM_Engine.clear('nav-workspace');
     const container = document.getElementById('nav-workspace');
+    const currentMonthIndex = new Date().getMonth();
+    const isCurrentYear = new Date().getFullYear() === tahun;
+    
+    // [BUG FIX]: Generate opsi tanpa atribut selected manual untuk menghindari inkonsistensi render browser
+    const optTahun = [2025, 2026, 2027].map(y => {
+        return DOM_Engine.create('option', '', { value: y }, [y]);
+    });
+
+    const selTahun = DOM_Engine.create('select', 'bg-white border border-slate-200 text-slate-700 text-sm rounded-xl px-4 py-2.5 font-bold outline-none', { 
+        id: 'filter-tahun-deklarasi', 
+        onChange: (e) => { State_DeklarasiTahun = parseInt(e.target.value); renderWorkspace_CetakDeklarasi(); } 
+    }, optTahun);
+    
+    // [CRITICAL FIX]: Paksa penetapan nilai dropdown sesuai tahun berjalan (State_DeklarasiTahun)
+    // Ini memastikan dropdown tidak melompat ke item terakhir (2027) secara default.
+    selTahun.value = tahun; 
+
+    const filterCtrl = DOM_Engine.create('div', 'flex items-center gap-2 mt-4 sm:mt-0', {}, [
+        selTahun,
+        DOM_Engine.create('button', 'bg-purple-50 hover:bg-purple-100 text-purple-600 border border-purple-200 w-10 h-10 rounded-xl shadow-sm flex items-center justify-center transition-colors', { onClick: renderWorkspace_CetakDeklarasi }, [DOM_Engine.create('i', 'fa-solid fa-rotate-right')])
+    ]);
 
     const headerSec = DOM_Engine.create('div', 'mb-8 fade-in flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4', {}, [
         DOM_Engine.create('div', '', {}, [
             DOM_Engine.create('h2', 'text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-3', {}, [
-                DOM_Engine.create('div', 'p-2 bg-purple-100 rounded-xl', {}, [DOM_Engine.create('i', 'fa-solid fa-print text-purple-600')]),
-                'Cetak Deklarasi Dinas'
+                DOM_Engine.create('div', 'p-2 bg-purple-100 rounded-xl', {}, [DOM_Engine.create('i', 'fa-solid fa-folder-tree text-purple-600')]),
+                'Arsip Deklarasi Dinas'
             ]),
-            DOM_Engine.create('p', 'text-slate-500 text-sm mt-2 ml-14', {}, ['Ekspor form deklarasi resmi untuk klaim perjalanan per Nomor Surat Tugas.'])
+            DOM_Engine.create('p', 'text-slate-500 text-sm mt-2 ml-14', {}, ['Pilih bulan untuk melihat dan mengunduh form deklarasi perjalanan.'])
         ]),
-        DOM_Engine.create('button', 'bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 px-4 py-2 rounded-xl font-bold text-sm shadow-sm flex items-center gap-2 transition-all', { onClick: renderWorkspace_CetakDeklarasi }, [DOM_Engine.create('i', 'fa-solid fa-rotate-right'), 'Refresh'])
+        filterCtrl
     ]);
 
-    const stKeys = Object.keys(groupedData);
+    const bulanNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+    
+    // Render 12 Kartu Bulan
+    const cards = summaryData.map((data, index) => {
+        const isTargetMonth = isCurrentYear && index === currentMonthIndex;
+        const hasData = data.totalTitik > 0;
+        
+        let cardClasses = 'glass p-6 rounded-[1.5rem] shadow-premium transition-all border flex flex-col justify-between group relative overflow-hidden ';
+        
+        if (isTargetMonth) {
+            cardClasses += 'border-purple-400 bg-purple-50/50 hover:shadow-2xl hover:-translate-y-1 cursor-pointer';
+        } else if (hasData) {
+            cardClasses += 'border-slate-200 hover:border-purple-300 hover:shadow-2xl hover:-translate-y-1 cursor-pointer';
+        } else {
+            cardClasses += 'border-slate-100 opacity-60 grayscale-[50%] cursor-not-allowed';
+        }
+
+        let badgeStatus = '';
+        if (isTargetMonth) badgeStatus = DOM_Engine.create('div', 'absolute top-0 right-0 bg-purple-500 text-white text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-bl-xl', {}, ['Bulan Ini']);
+
+        let contentBody;
+        if (hasData) {
+            let infoTanpaST = data.totalTanpaST > 0 
+                ? DOM_Engine.create('p', 'text-[10px] font-bold text-rose-500 mt-1', {}, [`⚠️ ${data.totalTanpaST} Kunjungan Belum Ada ST`]) 
+                : '';
+
+            contentBody = DOM_Engine.create('div', 'mt-4 space-y-1', {}, [
+                DOM_Engine.create('p', 'text-sm font-bold text-slate-700', {}, [`Total Kunjungan: ${data.totalTitik} Titik`]),
+                DOM_Engine.create('p', 'text-sm font-bold text-indigo-600', {}, [`Total Surat Tugas: ${data.totalST} ST`]),
+                infoTanpaST
+            ]);
+        } else {
+            contentBody = DOM_Engine.create('div', 'mt-4 flex items-center gap-2 text-slate-400', {}, [
+                DOM_Engine.create('i', 'fa-solid fa-inbox'),
+                DOM_Engine.create('span', 'text-sm font-medium', {}, ['Tidak ada histori perjalanan'])
+            ]);
+        }
+
+        return DOM_Engine.create('div', cardClasses, {
+            onClick: hasData ? () => action_openDeklarasiDetail(index + 1, tahun, bulanNames[index]) : null
+        }, [
+            badgeStatus,
+            DOM_Engine.create('div', 'flex items-center gap-4', {}, [
+                DOM_Engine.create('div', `w-12 h-12 rounded-xl flex items-center justify-center text-xl font-black shadow-sm ${hasData ? 'bg-gradient-to-br from-purple-500 to-indigo-600 text-white' : 'bg-slate-200 text-slate-400'}`, {}, [
+                    DOM_Engine.create('i', 'fa-regular fa-calendar')
+                ]),
+                DOM_Engine.create('h3', `text-xl font-extrabold tracking-tight ${hasData ? 'text-slate-800' : 'text-slate-500'}`, {}, [bulanNames[index]])
+            ]),
+            contentBody,
+            hasData ? DOM_Engine.create('div', 'mt-5 flex justify-end', {}, [
+                DOM_Engine.create('div', 'w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-purple-100 group-hover:text-purple-600 transition-colors', {}, [
+                    DOM_Engine.create('i', 'fa-solid fa-arrow-right')
+                ])
+            ]) : null
+        ]);
+    });
+
+    const grid = DOM_Engine.create('div', 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5', {}, cards);
+    container.appendChild(DOM_Engine.create('div', 'bg-slate-50 min-h-screen p-2', {}, [headerSec, grid]));
+}
+
+function action_openDeklarasiDetail(bulan, tahun, namaBulan) {
+    DOM_Engine.clear('nav-workspace');
+    const container = document.getElementById('nav-workspace');
+    
+    container.appendChild(DOM_Engine.create('div', 'flex flex-col items-center justify-center py-20 fade-in', {}, [
+        DOM_Engine.create('i', 'fa-solid fa-file-invoice fa-spin text-4xl text-purple-500 mb-4'),
+        DOM_Engine.create('p', 'text-slate-500 font-medium tracking-wide', {}, [`Menarik rincian Surat Tugas bulan ${namaBulan} ${tahun}...`])
+    ]));
+
+    google.script.run.withSuccessHandler((res) => {
+        if (res.status === 'success') buildUI_CetakDeklarasi_Detail(res.data, namaBulan, tahun);
+        else { sysShowToast(res.message, 'error'); renderWorkspace_CetakDeklarasi(); }
+    }).api_getLogPribadi(SysState.user, bulan, tahun);
+}
+
+function buildUI_CetakDeklarasi_Detail(groupedData, namaBulan, tahun) {
+    DOM_Engine.clear('nav-workspace');
+    const container = document.getElementById('nav-workspace');
+
+    const btnBack = DOM_Engine.create('button', 'text-slate-500 hover:text-purple-600 font-medium flex items-center gap-2 mb-6 transition-colors', { onClick: renderWorkspace_CetakDeklarasi }, [DOM_Engine.create('i', 'fa-solid fa-arrow-left'), ' Kembali ke Daftar Bulan']);
+
+    const headerSec = DOM_Engine.create('div', 'mb-8 fade-in flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4', {}, [
+        DOM_Engine.create('div', '', {}, [
+            btnBack,
+            DOM_Engine.create('h2', 'text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-3', {}, [
+                DOM_Engine.create('div', 'p-2 bg-purple-100 rounded-xl', {}, [DOM_Engine.create('i', 'fa-solid fa-print text-purple-600')]),
+                `Deklarasi Dinas - ${namaBulan} ${tahun}`
+            ]),
+            DOM_Engine.create('p', 'text-slate-500 text-sm mt-2 ml-14', {}, ['Ekspor form deklarasi resmi untuk klaim perjalanan per Nomor Surat Tugas.'])
+        ])
+    ]);
+
+    const stKeys = Object.keys(groupedData).sort((a, b) => b.localeCompare(a));
     if (stKeys.length === 0) {
         container.appendChild(DOM_Engine.create('div', 'bg-slate-50 min-h-screen p-2', {}, [headerSec, DOM_Engine.create('div', 'glass text-center py-16 rounded-[2rem] border border-white shadow-premium', {}, [
             DOM_Engine.create('i', 'fa-solid fa-folder-open text-5xl text-slate-300 mb-4'),
@@ -1992,7 +2815,7 @@ function buildUI_CetakDeklarasi(groupedData) {
                 ])
             ]),
             DOM_Engine.create('button', 'w-full sm:w-auto px-6 py-3 bg-slate-900 hover:bg-purple-600 text-white rounded-xl font-bold text-sm shadow-md transition-all hover:-translate-y-1 flex items-center justify-center gap-2', {
-                onClick: () => action_downloadDeklarasi(st, logs) // Memanggil Mesin Deklarasi Baru
+                onClick: () => action_downloadDeklarasi(st, logs) 
             }, [DOM_Engine.create('i', 'fa-solid fa-file-pdf'), 'Unduh Form'])
         ]);
     });
@@ -2001,15 +2824,51 @@ function buildUI_CetakDeklarasi(groupedData) {
     container.appendChild(DOM_Engine.create('div', 'bg-slate-50 min-h-screen p-2', {}, [headerSec, grid]));
 }
 
-
-
 function execute_downloadDeklarasiPDF(stNumber, logs) {
-    sysShowToast("Mempersiapkan Form Deklarasi + Digital Signature...", "info");
+    sysShowToast("Mempersiapkan QR Digital Signature...", "info");
 
-// [INJEKSI QR CODE] - WAJIB GANTI URL INI DENGAN URL DEPLOYMENT WEB APP ANDA!
-    const webAppUrl = "https://script.google.com/macros/s/AKfycbycL6s5-tU3dOlMjksN6OzLcbOcjAxQHhndvXLIaplyi12ELWBg3Wy0xzN_dyy23TVT/exec"; 
-    const verificationUrl = webAppUrl + "?verify_st=" + stNumber + "&nrpp=" + SysState.user.nrpp;
-    const qrCodeImage = "https://quickchart.io/qr?text=" + encodeURIComponent(verificationUrl) + "&size=80&margin=0";
+    // =========================================================================
+    // [PATCH v1.4.33 - Opsi B]: BE-Side URL Shortener
+    // BE memanggil is.gd via UrlFetchApp (bebas CORS) + cache 6 jam.
+    // Semua logika PDF dieksekusi di dalam callback successHandler.
+    // =========================================================================
+    google.script.run
+        .withSuccessHandler(function(res) {
+            const shortUrl = res.shortUrl;
+            console.log("[QR] Source:", res.source, "| URL:", shortUrl);
+            _buildAndSaveDeklarasiPDF(stNumber, logs, shortUrl);
+        })
+        .withFailureHandler(function(err) {
+            console.warn("[QR] api_getShortUrl gagal:", err.message, "- pakai full URL");
+            const webAppUrl = "https://script.google.com/macros/s/AKfycbycL6s5-tU3dOlMjksN6OzLcbOcjAxQHhndvXLIaplyi12ELWBg3Wy0xzN_dyy23TVT/exec";
+            const fallbackUrl = webAppUrl + "?verify_st=" + stNumber + "&nrpp=" + SysState.user.nrpp;
+            _buildAndSaveDeklarasiPDF(stNumber, logs, fallbackUrl);
+        })
+        .api_getShortUrl(stNumber, SysState.user.nrpp);
+}
+
+function _buildAndSaveDeklarasiPDF(stNumber, logs, qrPayload) {
+    // QR encode qrPayload = is.gd short URL (~20 char) → QR Version 2 (25×25 modul)
+    // size=500 → tiap modul QR lebih tebal & jelas saat diprint B&W
+    const qrCodeImage = "https://quickchart.io/qr?text=" + encodeURIComponent(qrPayload) + "&size=500&margin=3&level=L&format=png";
+
+    // =========================================================================
+    // [BUG FIX]: CHRONOLOGICAL SORTING ENGINE (A -> Z)
+    // Mengurutkan ulang array dari Backend agar Berangkat (Awal) dan Kembali (Akhir)
+    // tercetak secara proporsional dari atas ke bawah.
+    // =========================================================================
+    logs.sort((a, b) => {
+        const parseDateStr = (str) => {
+            if (!str || str === '-') return 0;
+            const parts = str.split(' ');
+            const dateParts = parts[0].split('/');
+            const timeParts = parts[1] ? parts[1].split(':') : ['00', '00'];
+            // Konversi "dd/MM/yyyy HH:mm" ke objek Date Time murni
+            return new Date(dateParts[2], dateParts[1] - 1, dateParts[0], timeParts[0], timeParts[1]).getTime();
+        };
+        return parseDateStr(a.waktuKeluar) - parseDateStr(b.waktuKeluar);
+    });
+    // =========================================================================
 
     let berangkat = logs.length > 0 ? logs[0].waktuKeluar : '-';
     let kembali = logs.length > 0 ? logs[logs.length-1].waktuMasuk : '-';
@@ -2040,6 +2899,7 @@ function execute_downloadDeklarasiPDF(stNumber, logs) {
     const fmt = (num) => (num && num > 0) ? num.toLocaleString('id-ID') : '';
     const namaHariArray = ["MINGGU", "SENIN", "SELASA", "RABU", "KAMIS", "JUMAT", "SABTU"];
 
+    // Looping sekarang akan mengeksekusi data yang sudah diurutkan (A -> Z)
     for (let i = 0; i < totalBaris; i++) {
         let bd = logs[i].breakdown || { upd: 0, makanSiang: 0, makanTotal: 0, lain: 0, total: 0 };
         grandTotal += bd.total;
@@ -2094,7 +2954,7 @@ function execute_downloadDeklarasiPDF(stNumber, logs) {
         .table-kop td { border: 1px solid #000; padding: 1px 4px; height: 14px; vertical-align: middle; white-space: nowrap; font-size: 8pt; }
         .table-data td, .table-data th { border: 1px solid #000; padding: 1px 4px; height: 14px; vertical-align: middle; font-size: 8pt; }
         .table-data th { text-align: center; font-weight: normal; }
-        .table-ttd { width: 60%; margin-top: 8px; font-size: 8pt; page-break-inside: avoid; }
+        .table-ttd { width: 80%; margin-top: 8px; font-size: 8pt; page-break-inside: avoid; }
         .table-ttd th, .table-ttd td { border: 1px solid #000; padding: 2px; text-align: center; vertical-align: top; }
         .table-ttd th { font-weight: normal; }
         .text-center { text-align: center; } .text-right { text-align: right; } .text-left { text-align: left; }
@@ -2183,16 +3043,22 @@ function execute_downloadDeklarasiPDF(stNumber, logs) {
           <th style="width: 25%">HRGA Div</th>
         </tr>
         <tr>
-          <td style="height: 70px; vertical-align: bottom; position: relative;">
-            <img src="${qrCodeImage}" style="width: 50px; height: 50px; margin: 0 auto; display: block;" />
-            <div style="font-size: 5pt; font-weight: bold; color: #555; margin-top: 2px;">DIGITAL VERIFIED</div>
-            ${SysState.user.nama}
+          <td style="height: 115px; vertical-align: bottom; text-align: center; padding: 4px;">
+            <img src="${qrCodeImage}" style="width: 110px; height: 110px; display: block; margin: 0 auto 2px;" />
+            <div style="font-size: 5pt; font-weight: bold; color: #555;">DIGITAL VERIFIED</div>
+            <div style="font-size: 6pt;">${SysState.user.nama}</div>
           </td>
-          <td style="height: 70px"></td>
-          <td style="height: 70px"></td>
-          <td style="height: 70px"></td>
+          <td style="height: 115px"></td>
+          <td style="height: 115px"></td>
+          <td style="height: 115px"></td>
         </tr>
       </table>
+
+      <div style="margin-top: 4px; text-align: right; font-family: Arial, sans-serif;">
+        <span style="background: #f0f0f0; border: 1px solid #ccc; border-radius: 3px; padding: 2px 6px; font-weight: bold; color: #222; font-size: 5pt; letter-spacing: 0.3px;">
+          &#10003; TERVERIFIKASI &nbsp;|&nbsp; ID: CEPU-${stNumber}-${SysState.user.nrpp}
+        </span>
+      </div>
     `;
 
     const prefixName = `CEPU_Deklarasi_ST_${stNumber}_NRPP_${SysState.user.nrpp}`;
@@ -2200,10 +3066,16 @@ function execute_downloadDeklarasiPDF(stNumber, logs) {
         margin:       [0.48, 0.2, 0.8, 0.2], 
         filename:     `${prefixName}.pdf`,
         image:        { type: 'jpeg', quality: 1 },
-        html2canvas:  { scale: 2, useCORS: true },
+        html2canvas:  { 
+            scale: 3,  // [PATCH]: Increased from 2 to 3 (300 DPI target)
+            useCORS: true,
+            logging: false,
+            allowTaint: true  // Allow external QR image embedding
+        },
         jsPDF:        { unit: 'in', format: 'a4', orientation: 'landscape' }
     };
 
+    sysShowToast("Mengkompilasi PDF...", "info");
     html2pdf().set(opt).from(pdfContainer).save().then(() => {
         sysShowToast("Deklarasi PDF + Digital Signature berhasil diunduh!", "success");
     }).catch(err => {
@@ -2472,6 +3344,337 @@ function buildUI_AuditLogSelection(dataKaryawan) {
     container.appendChild(DOM_Engine.create('div', 'bg-aurora min-h-screen p-2', {}, [headerSec, grid]));
 }
 
+// ==============================================================================
+// SUB-MENU 3: EMPLOYEE ANALYTICS (ENTERPRISE WORKFORCE STATISTICS)
+// ==============================================================================
+function action_openSubMenu_Analytics() {
+    DOM_Engine.clear('nav-workspace');
+    const container = document.getElementById('nav-workspace');
+
+    container.appendChild(DOM_Engine.create('div', 'flex flex-col items-center justify-center py-20 fade-in', {}, [
+        DOM_Engine.create('i', 'fa-solid fa-chart-pie fa-spin text-4xl text-emerald-500 mb-4'),
+        DOM_Engine.create('p', 'text-slate-500 font-medium tracking-wide', {}, ['Menyiapkan direktori analitik karyawan...'])
+    ]));
+
+    google.script.run.withSuccessHandler((res) => {
+        if (res.status === 'success') buildUI_AnalyticsSelection(res.data);
+        else { sysShowToast(res.message, 'error'); renderWorkspace_KelolaKaryawan(); }
+    }).api_adminGetKaryawanDetails();
+}
+
+function buildUI_AnalyticsSelection(dataKaryawan) {
+    DOM_Engine.clear('nav-workspace');
+    const container = document.getElementById('nav-workspace');
+
+    const btnBack = DOM_Engine.create('button', 'text-slate-500 hover:text-indigo-600 font-medium flex items-center gap-2 mb-6 transition-colors', { onClick: renderWorkspace_KelolaKaryawan }, [DOM_Engine.create('i', 'fa-solid fa-arrow-left'), ' Kembali ke HRIS Center']);
+
+    const headerSec = DOM_Engine.create('div', 'mb-8 fade-in flex flex-col md:flex-row md:items-end justify-between gap-4', {}, [
+        DOM_Engine.create('div', '', {}, [
+            btnBack,
+            DOM_Engine.create('h2', 'text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-3', {}, [DOM_Engine.create('i', 'fa-solid fa-chart-pie text-emerald-500'), 'Analitik Kinerja Karyawan']),
+            DOM_Engine.create('p', 'text-slate-500 text-sm mt-1', {}, ['Pilih karyawan untuk melihat statistik kehadiran, trip, dan keuangan UPD.'])
+        ]),
+        DOM_Engine.create('div', 'bg-white border border-slate-200 rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm flex-shrink-0', {}, [
+            DOM_Engine.create('i', 'fa-solid fa-magnifying-glass text-slate-400'),
+            DOM_Engine.create('input', 'bg-transparent border-none outline-none text-sm font-semibold text-slate-700 w-full md:w-64 placeholder-slate-400', {
+                type: 'text', placeholder: 'Cari Nama / NRPP / Jabatan...',
+                onInput: (e) => {
+                    const term = e.target.value.toLowerCase();
+                    document.querySelectorAll('.analytics-card').forEach(card => {
+                        const dataText = card.getAttribute('data-search');
+                        card.style.display = dataText.includes(term) ? 'flex' : 'none';
+                    });
+                }
+            })
+        ])
+    ]);
+
+    const cards = dataKaryawan.map(k => {
+        return DOM_Engine.create('div', 'analytics-card glass p-6 rounded-[1.5rem] shadow-premium hover:shadow-2xl transition-all border border-white flex flex-col justify-between group', {
+            'data-search': `${k.nama} ${k.nrpp} ${k.jabatan}`.toLowerCase()
+        }, [
+            DOM_Engine.create('div', 'flex items-center gap-4 mb-5', {}, [
+                DOM_Engine.create('div', 'w-14 h-14 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center text-xl font-black shadow-inner flex-shrink-0', {}, [k.nama.charAt(0).toUpperCase()]),
+                DOM_Engine.create('div', 'overflow-hidden', {}, [
+                    DOM_Engine.create('h3', 'text-lg font-bold text-slate-800 tracking-tight truncate', {}, [k.nama]),
+                    DOM_Engine.create('p', 'text-[10px] font-bold text-slate-400 uppercase tracking-wider', {}, [k.nrpp + ' \u2022 ' + k.jabatan])
+                ])
+            ]),
+            DOM_Engine.create('button', 'w-full py-3 bg-slate-900 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold transition-all shadow-md flex justify-center items-center gap-2', {
+                onClick: () => renderWorkspace_EmployeeAnalytics(k.nrpp, k.nama)
+            }, [DOM_Engine.create('i', 'fa-solid fa-chart-column'), 'Lihat Analitik'])
+        ]);
+    });
+
+    const grid = DOM_Engine.create('div', 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6', {}, cards);
+    container.appendChild(DOM_Engine.create('div', 'bg-aurora min-h-screen p-2', {}, [headerSec, grid]));
+}
+
+// ==============================================================================
+// [NEW ENGINE]: ENTERPRISE GLOBAL ANALYTICS DASHBOARD
+// ==============================================================================
+
+let State_GlobalFilter = 'ALL';
+
+function renderWorkspace_GlobalAnalytics() {
+    DOM_Engine.clear('nav-workspace');
+    const container = document.getElementById('nav-workspace');
+
+    container.appendChild(DOM_Engine.create('div', 'flex flex-col items-center justify-center py-20 fade-in', {}, [
+        DOM_Engine.create('i', 'fa-solid fa-chart-pie fa-spin text-4xl text-emerald-500 mb-4'),
+        DOM_Engine.create('p', 'text-slate-500 font-medium tracking-wide', {}, ['Mengkalkulasi Big Data & Analitik...'])
+    ]));
+
+    google.script.run
+        .withSuccessHandler(res => {
+            DOM_Engine.clear('nav-workspace');
+            if (res.status === 'error') {
+                container.appendChild(DOM_Engine.create('div', 'p-10 text-center text-rose-500 font-bold', {}, [DOM_Engine.create('i', 'fa-solid fa-triangle-exclamation text-3xl mb-4 block'), res.message]));
+                return;
+            }
+            if (!res.data) {
+                container.appendChild(DOM_Engine.create('div', 'p-10 text-center text-slate-500', {}, [DOM_Engine.create('i', 'fa-solid fa-inbox text-3xl mb-4 block'), 'Data belum tersedia untuk periode ini. Silakan ubah filter.']));
+            }
+            
+            const g = res.data || { totalTrips: 0, totalUpd: 0, totalHours: 0, uniqueLocations: 0, trend: [], departments: [], customers: [], topPerformers: [], attendance: {hadir:0, bks:0, st:0, total:1}, avgUpd: 0 };
+            const btnBack = DOM_Engine.create('button', 'text-slate-500 hover:text-emerald-600 font-medium flex items-center gap-2 mb-6 transition-colors', { onClick: renderWorkspace_KelolaKaryawan }, [DOM_Engine.create('i', 'fa-solid fa-arrow-left'), ' Kembali ke HRIS Center']);
+
+            // ==========================================
+            // 1. FILTER PERIODE & HEADER (FIXED DOM_ENGINE)
+            // ==========================================
+            const optFilters = [
+                { val: 'ALL', text: 'Semua Waktu (Active + Archive)' },
+                { val: '1Y', text: '1 Tahun Terakhir' },
+                { val: '6M', text: '6 Bulan Terakhir' },
+                { val: '1M', text: 'Bulan Ini Saja' }
+            ].map(opt => {
+                let attrs = { value: opt.val };
+                // HANYA injeksi 'selected' jika filter cocok (mencegah bug selected="false")
+                if (State_GlobalFilter === opt.val) attrs.selected = 'true';
+                return DOM_Engine.create('option', '', attrs, [opt.text]);
+            });
+
+            const selectFilter = DOM_Engine.create('select', 'bg-white border border-slate-200 text-slate-700 text-sm rounded-xl px-4 py-2 font-bold shadow-sm outline-none cursor-pointer focus:ring-2 focus:ring-emerald-500/20', {
+                onChange: (e) => { State_GlobalFilter = e.target.value; renderWorkspace_GlobalAnalytics(); }
+            }, optFilters);
+
+            const headerSec = DOM_Engine.create('div', 'mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4', {}, [
+                DOM_Engine.create('div', '', {}, [
+                    btnBack,
+                    DOM_Engine.create('h2', 'text-3xl font-black text-slate-800 tracking-tight flex items-center gap-3', {}, [
+                        DOM_Engine.create('div', 'p-2 bg-emerald-100 rounded-xl', {}, [DOM_Engine.create('i', 'fa-solid fa-chart-line text-emerald-600')]),
+                        'Global Enterprise Dashboard'
+                    ]),
+                    DOM_Engine.create('p', 'text-slate-500 mt-2 ml-14', {}, ['Analitik Kinerja Terpusat & Peta Pengeluaran (Cost Center) Departemen'])
+                ]),
+                DOM_Engine.create('div', 'flex flex-col gap-1', {}, [
+                    DOM_Engine.create('label', 'text-[10px] font-bold text-slate-400 uppercase tracking-widest', {}, ['Rentang Analitik:']),
+                    selectFilter
+                ])
+            ]);
+
+            // 2. METRIK UTAMA
+            const metricsGrid = DOM_Engine.create('div', 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8', {}, [
+                _uiCreateMiniMetric('Total Trip', g.totalTrips, 'fa-route', 'indigo'),
+                _uiCreateMiniMetric('Total Beban Biaya', `Rp ${Number(g.totalUpd).toLocaleString('id-ID')}`, 'fa-wallet', 'emerald'),
+                _uiCreateMiniMetric('Total Man-Hours', `${g.totalHours} Jam`, 'fa-clock', 'amber'),
+                _uiCreateMiniMetric('Cakupan Wilayah', g.uniqueLocations, 'fa-earth-asia', 'rose')
+            ]);
+
+            // 3. STATISTIK DIAGRAM (TREND CHART) - PURE CSS
+const chartSection = DOM_Engine.create('div', 'bg-white rounded-[2rem] p-8 shadow-premium border border-slate-100 mb-8 relative z-10', {}, [
+                DOM_Engine.create('h3', 'text-lg font-black text-slate-800 flex items-center gap-3 mb-2', {}, [DOM_Engine.create('i', 'fa-solid fa-chart-simple text-indigo-500'), 'Tren Pengeluaran & Aktivitas Bulanan']),
+                DOM_Engine.create('p', 'text-xs text-slate-500 mb-6', {}, ['Perbandingan pertumbuhan pengeluaran UPD dari bulan ke bulan.']),
+                _uiCreateCSSBarChart(g.trend)
+            ]);
+
+            // 4. COST CENTER DEPARTEMEN
+            const deptCards = g.departments.map((dept) => {
+                const percentDept = g.totalUpd > 0 ? (dept.totalUpd / g.totalUpd * 100).toFixed(1) : 0;
+                const jabatanRows = dept.jabatans.map((jab) => {
+                    const percentJab = dept.totalUpd > 0 ? (jab.totalUpd / dept.totalUpd * 100).toFixed(1) : 0;
+                    return DOM_Engine.create('div', 'mb-3', {}, [
+                        DOM_Engine.create('div', 'flex justify-between items-end mb-1', {}, [
+                            DOM_Engine.create('span', 'text-xs font-bold text-slate-600', {}, [jab.name]),
+                            DOM_Engine.create('span', 'text-xs font-black text-indigo-600', {}, [`Rp ${Number(jab.totalUpd).toLocaleString('id-ID')}`])
+                        ]),
+                        DOM_Engine.create('div', 'w-full h-1.5 bg-slate-100 rounded-full overflow-hidden mb-1', {}, [
+                            DOM_Engine.create('div', 'h-full bg-indigo-500 rounded-full', { style: `width: ${percentJab}%` })
+                        ]),
+                        DOM_Engine.create('div', 'flex justify-between text-[9px] font-bold text-slate-400 uppercase tracking-widest', {}, [
+                            DOM_Engine.create('span', '', {}, [`${jab.totalTrips} TRIP`]), DOM_Engine.create('span', '', {}, [`${percentJab}%`])
+                        ])
+                    ]);
+                });
+
+                return DOM_Engine.create('div', 'bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-xl transition-all', {}, [
+                    DOM_Engine.create('div', 'flex justify-between items-start mb-4', {}, [
+                        DOM_Engine.create('div', '', {}, [
+                            DOM_Engine.create('h4', 'text-lg font-black text-slate-800 tracking-tight', {}, [dept.name]),
+                            DOM_Engine.create('span', 'text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md uppercase', {}, [`${dept.totalTrips} TRIP`])
+                        ]),
+                        DOM_Engine.create('div', 'text-right', {}, [
+                            DOM_Engine.create('h4', 'text-xl font-black text-emerald-500', {}, [`Rp ${Number(dept.totalUpd).toLocaleString('id-ID')}`]),
+                            DOM_Engine.create('p', 'text-[10px] font-bold text-slate-400', {}, [`${percentDept}% Global`])
+                        ])
+                    ]),
+                    DOM_Engine.create('div', 'w-full h-2.5 bg-slate-100 rounded-full overflow-hidden mb-6 shadow-inner', {}, [
+                        DOM_Engine.create('div', 'h-full bg-gradient-to-r from-emerald-400 to-emerald-500 rounded-full', { style: `width: ${percentDept}%` })
+                    ]),
+                    DOM_Engine.create('div', 'pt-5 border-t border-slate-100', {}, jabatanRows)
+                ]);
+            });
+
+            // 5. CUSTOMER ANALYTICS TABLE
+            const custTableSection = DOM_Engine.create('div', 'bg-white rounded-[2rem] p-6 shadow-premium border border-slate-100 h-full', {}, [
+                DOM_Engine.create('h3', 'text-lg font-black text-slate-800 flex items-center gap-3 mb-2', {}, [DOM_Engine.create('i', 'fa-solid fa-building-user text-rose-500'), 'Top 30 Customer & Destinasi']),
+                DOM_Engine.create('p', 'text-xs text-slate-500 mb-4', {}, ['Rincian ST dan serapan biaya berdasarkan klien.']),
+                _uiCreateCustomerTable(g.customers)
+            ]);
+
+            // 6. LAYOUT ASSEMBLY
+            const layoutGrid = DOM_Engine.create('div', 'grid grid-cols-1 lg:grid-cols-12 gap-8', {}, [
+                // KOLOM KIRI (Cost Center)
+                DOM_Engine.create('div', 'lg:col-span-4 flex flex-col gap-6', {}, [
+                    DOM_Engine.create('h3', 'text-xl font-black text-slate-800 flex items-center gap-3 pl-2', {}, [DOM_Engine.create('i', 'fa-solid fa-sitemap text-amber-500'), 'Cost Center Breakdown']),
+                    ...deptCards
+                ]),
+                // KOLOM TENGAH (Customer Table)
+                DOM_Engine.create('div', 'lg:col-span-8 flex flex-col gap-6', {}, [
+                    custTableSection
+                ])
+            ]);
+
+            container.appendChild(DOM_Engine.create('div', 'bg-aurora min-h-screen p-2 fade-in', {}, [headerSec, metricsGrid, chartSection, layoutGrid]));
+        })
+        .api_getGlobalAnalytics(State_GlobalFilter);
+}
+
+// ==========================================================
+// [HELPER UTILITY ENGINE] - ENTERPRISE VERTICAL CARD
+// ==========================================================
+
+function _uiCreateMiniMetric(label, value, icon, color) {
+    return DOM_Engine.create('div', 'bg-white p-5 sm:p-6 rounded-[1.5rem] shadow-premium border border-slate-100 flex flex-col justify-between h-full relative overflow-hidden group', {}, [
+        // Dekorasi Aura Background Dinamis
+        DOM_Engine.create('div', `absolute -right-8 -top-8 w-32 h-32 bg-${color}-500 opacity-5 rounded-full group-hover:scale-125 transition-transform duration-700 pointer-events-none`),
+        
+        // Bagian Atas: Label Deskripsi & Kotak Ikon
+        DOM_Engine.create('div', 'flex justify-between items-start mb-4 sm:mb-8 gap-3 relative z-10', {}, [
+            // Label Teks di Kiri Atas
+            DOM_Engine.create('p', 'text-[10px] text-slate-500 font-extrabold uppercase tracking-widest leading-relaxed pt-1.5 flex-1', {}, [label]),
+            // Ikon di Kanan Atas
+            DOM_Engine.create('div', `w-10 h-10 sm:w-12 sm:h-12 bg-${color}-50 text-${color}-600 rounded-xl flex items-center justify-center text-lg sm:text-xl shadow-inner shrink-0 transition-transform group-hover:rotate-12`, {}, [
+                DOM_Engine.create('i', `fa-solid ${icon}`)
+            ])
+        ]),
+        
+        // Bagian Bawah: Nilai Angka Utama (Mendapat 100% Lebar Ruang)
+        DOM_Engine.create('div', 'relative z-10 mt-auto', {}, [
+            // Tidak menggunakan truncate atau break-words. Pembungkusan alami pada spasi.
+            DOM_Engine.create('h3', 'text-xl lg:text-2xl font-black text-slate-800 tracking-tight leading-none', {}, [String(value)])
+        ])
+    ]);
+}
+
+// ==========================================================
+// [HELPER UTILITY ENGINE] - INTERACTIVE CSS BAR CHART
+// ==========================================================
+
+function _uiCreateCSSBarChart(trendData) {
+    if (!trendData || trendData.length === 0) return DOM_Engine.create('div', 'py-10 text-center text-slate-400 font-bold', {}, ['Tidak ada data tren pada periode ini.']);
+    
+    const maxUpd = Math.max(...trendData.map(t => t.upd), 1);
+
+    const bars = trendData.map(t => {
+        const heightPct = Math.max((t.upd / maxUpd) * 100, 8); 
+        
+        return DOM_Engine.create('div', 'flex flex-col items-center justify-end group relative z-10 hover:z-[100] flex-1 min-w-[50px] max-w-[80px] cursor-pointer h-full', {}, [
+            
+            DOM_Engine.create('div', 'absolute bottom-full mb-2 bg-slate-800 border border-slate-700 text-white px-4 py-3 rounded-2xl opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-4 group-hover:translate-y-0 z-[100] pointer-events-none shadow-2xl flex flex-col items-center gap-1 min-w-[130px]', {}, [
+                DOM_Engine.create('span', 'text-[10px] text-slate-400 font-black uppercase tracking-widest', {}, [t.label]),
+                DOM_Engine.create('span', 'text-sm font-black text-emerald-400', {}, [`Rp ${Number(t.upd).toLocaleString('id-ID')}`]),
+                DOM_Engine.create('span', 'text-[10px] font-bold bg-white/10 px-2 py-0.5 rounded-md mt-1', {}, [`${t.trips} Total Trip`]),
+                DOM_Engine.create('div', 'absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-slate-800 border-b border-r border-slate-700 rotate-45')
+            ]),
+            
+            DOM_Engine.create('span', 'text-[9px] font-bold text-slate-400 mb-2 transition-all duration-300 group-hover:text-indigo-500 group-hover:-translate-y-2', {}, [`Rp ${(t.upd / 1000000).toFixed(1)}Jt`]),
+
+            DOM_Engine.create('div', 'w-full bg-slate-100 rounded-t-xl flex items-end overflow-hidden mb-2 transition-all duration-300 group-hover:-translate-y-2 group-hover:shadow-[0_10px_20px_-10px_rgba(99,102,241,0.5)]', { style: 'height: 160px;' }, [
+                DOM_Engine.create('div', 'w-full bg-gradient-to-t from-indigo-600 to-blue-400 rounded-t-xl transition-all duration-1000 group-hover:brightness-110 group-hover:from-emerald-500 group-hover:to-teal-400', { style: `height: ${heightPct}%;` })
+            ]),
+            
+            DOM_Engine.create('span', 'text-[10px] font-black text-slate-500 uppercase tracking-tighter group-hover:text-indigo-600 transition-colors', {}, [t.label])
+        ]);
+    });
+
+    // =========================================================================
+    // [PATCH 2 FIX]: RUANG NAPAS EKSTRA (h-[350px] dan pt-40 / Padding 160px)
+    // Menjamin Tooltip memiliki ruang melayang yang luas dan tidak menabrak atap kontainer
+    // =========================================================================
+    return DOM_Engine.create('div', 'relative z-20 flex items-end justify-start w-full h-[350px] pt-40 pb-2 border-t border-slate-100 overflow-x-auto hide-scrollbar gap-4 sm:gap-8 px-4 mt-4', {}, bars);
+}
+
+function _uiCreateCustomerTable(customers) {
+    if (!customers || customers.length === 0) return DOM_Engine.create('div', 'py-10 text-center text-slate-400', {}, ['Data Customer kosong.']);
+
+    const trs = customers.map((c, i) => {
+        return DOM_Engine.create('tr', 'hover:bg-slate-50/50 transition-colors border-b border-slate-100', {}, [
+            DOM_Engine.create('td', 'px-4 py-3 whitespace-nowrap', {}, [
+                DOM_Engine.create('p', 'text-sm font-bold text-slate-800', {}, [`${i + 1}. ${c.name}`]),
+                DOM_Engine.create('p', 'text-[10px] text-slate-500 font-medium truncate max-w-[200px]', { title: c.locList }, [DOM_Engine.create('i', 'fa-solid fa-location-dot mr-1 text-slate-400'), c.locList || '-'])
+            ]),
+            DOM_Engine.create('td', 'px-4 py-3', {}, [
+                DOM_Engine.create('p', 'text-[10px] font-black text-indigo-600 leading-snug tracking-wider break-words max-w-[250px]', {}, [c.stList || '-'])
+            ]),
+            DOM_Engine.create('td', 'px-4 py-3 text-center text-xs font-bold text-slate-600 whitespace-nowrap', {}, [
+                DOM_Engine.create('span', 'bg-slate-100 px-2.5 py-1 rounded-md', {}, [`${c.trips} TRIP`])
+            ]),
+            DOM_Engine.create('td', 'px-4 py-3 text-right whitespace-nowrap', {}, [
+                DOM_Engine.create('span', 'text-sm font-black text-emerald-600', {}, [`Rp ${Number(c.upd).toLocaleString('id-ID')}`])
+            ])
+        ]);
+    });
+
+    return DOM_Engine.create('div', 'overflow-x-auto hide-scrollbar mt-4 max-h-[600px] border border-slate-100 rounded-xl relative', {}, [
+        DOM_Engine.create('table', 'min-w-full text-left', {}, [
+            DOM_Engine.create('thead', 'bg-slate-50 sticky top-0 z-10 shadow-sm', {}, [
+                DOM_Engine.create('tr', '', {}, ['Customer & Destinasi', 'Histori No ST', 'Kunjungan', 'Beban Biaya'].map(h => DOM_Engine.create('th', 'px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest', {}, [h])))
+            ]),
+            DOM_Engine.create('tbody', 'bg-white', {}, trs)
+        ])
+    ]);
+}
+
+// Helper untuk Progress Bar yang lebih mewah
+function _uiCreateProgressBar(label, percent, colorClass) {
+    return DOM_Engine.create('div', 'mb-4', {}, [
+        DOM_Engine.create('div', 'flex justify-between text-[11px] mb-1.5 font-bold', {}, [
+            DOM_Engine.create('span', 'text-slate-400 tracking-wider uppercase', {}, [label]),
+            DOM_Engine.create('span', 'text-white', {}, [`${percent.toFixed(1)}%`])
+        ]),
+        DOM_Engine.create('div', 'w-full h-1.5 bg-white/10 rounded-full overflow-hidden shadow-inner', {}, [
+            DOM_Engine.create('div', `h-full ${colorClass} transition-all duration-1000`, { style: `width: ${percent}%` })
+        ])
+    ]);
+}
+
+/** Helper UI Component: Analytic Stat Card */
+function _uiCreateStatCard(title, icon, color, rows) {
+    return DOM_Engine.create('div', 'bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100', {}, [
+        DOM_Engine.create('div', `w-12 h-12 bg-${color}-50 text-${color}-500 rounded-2xl flex items-center justify-center mb-4 text-xl`, {}, [
+            DOM_Engine.create('i', `fa-solid ${icon}`)
+        ]),
+        DOM_Engine.create('h4', 'font-bold text-slate-700 mb-4', {}, [title]),
+        DOM_Engine.create('div', 'space-y-3', {}, rows.map(r => {
+            return DOM_Engine.create('div', 'flex justify-between items-center', {}, [
+                DOM_Engine.create('span', 'text-xs text-slate-500', {}, [r[0]]),
+                DOM_Engine.create('span', `text-sm font-black text-slate-800 ${r[2] ? 'text-indigo-600' : ''}`, {}, [String(r[1])])
+            ]);
+        }))
+    ]);
+}
+
 // ==========================================================
 // MODAL PEMILIH BULAN & TAHUN (MEWAH)
 // ==========================================================
@@ -2547,131 +3750,418 @@ function execute_generateIndividualAuditPDF(user) {
 // RENDER PDF INDIVIDU (PIXEL-PERFECT ENTERPRISE TEMPLATE)
 // ==========================================================
 function renderPDF_IndividualAudit(user, logs, filter) {
-    sysShowToast("Membangun dokumen PDF premium...", "info");
+    sysShowToast("Membangun Dokumen Analytics Enterprise (Pure Table Engine)...", "info");
     const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
     const periodeStr = `${months[filter.month]} ${filter.year}`;
-    const now = new Date();
-    const tglCetak = now.toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }) + ' ' + 
-                     now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
+    const tglCetak = new Date().toLocaleString('id-ID', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' WIB';
 
-    let totalDurasi = 0, totalNominal = 0;
-    
-    // Looping Data Tabel dengan Desain Striped (Belang-belang) & Badge Status
-    let rowsHtml = logs.map((l, i) => {
-        totalDurasi += l.durasi; totalNominal += l.nominal;
+    // =========================================================================
+    // 1. ENTERPRISE ANALYTICS ENGINE (DATA PROCESSING)
+    // =========================================================================
+    let totalUpd = 0, totalDurasi = 0;
+    const groupST = {}, groupCust = {}, dailyIncome = {};
+
+    logs.forEach(l => {
+        totalUpd += l.nominal;
+        totalDurasi += l.durasi;
         
-        const bgRow = i % 2 === 0 ? '#ffffff' : '#f8fafc'; // Efek Zebra Cross untuk tabel
-        let badgeColor = l.persetujuan.toUpperCase() === 'APPROVED' ? '#059669' : (l.persetujuan.toUpperCase().includes('PENDING') ? '#d97706' : '#e11d48');
-        let badgeBg = l.persetujuan.toUpperCase() === 'APPROVED' ? '#ecfdf5' : (l.persetujuan.toUpperCase().includes('PENDING') ? '#fffbeb' : '#ffe4e6');
+        if (!groupST[l.st]) groupST[l.st] = { count: 0, durasi: 0, nominal: 0, customers: new Set() };
+        groupST[l.st].count++;
+        groupST[l.st].durasi += l.durasi;
+        groupST[l.st].nominal += l.nominal;
+        groupST[l.st].customers.add(l.customer);
 
+        if (!groupCust[l.customer]) groupCust[l.customer] = { count: 0, nominal: 0, durasi: 0 };
+        groupCust[l.customer].count++;
+        groupCust[l.customer].nominal += l.nominal;
+        groupCust[l.customer].durasi += l.durasi;
+
+        let dateKey = l.tanggal.split(' ')[0];
+        dailyIncome[dateKey] = (dailyIncome[dateKey] || 0) + l.nominal;
+    });
+
+    const avgDurasi = logs.length > 0 ? (totalDurasi / logs.length).toFixed(2) : 0;
+    const avgUpd = logs.length > 0 ? (totalUpd / logs.length) : 0;
+    const peakDay = Object.entries(dailyIncome).sort((a,b) => b[1] - a[1])[0] || ["-", 0];
+
+    // =========================================================================
+    // 2. HTML BUILDER (PAGE 1: LOG PERJALANAN DETAIL)
+    // =========================================================================
+    const rowsLogHtml = logs.map((l, i) => {
+        const bgRow = i % 2 === 0 ? '#ffffff' : '#f8fafc';
+        const isApp = l.persetujuan.toUpperCase() === 'APPROVED';
+        const isPen = l.persetujuan.toUpperCase().includes('PENDING');
+        const stClass = isApp ? 'color:#059669; background:#ecfdf5; border:1px solid #a7f3d0;' : 
+                       (isPen ? 'color:#d97706; background:#fffbeb; border:1px solid #fde68a;' : 'color:#e11d48; background:#fff1f2; border:1px solid #fecdd3;');
+        
         return `
-            <tr style="background-color: ${bgRow};">
-                <td style="text-align:center; border-bottom: 1px solid #e2e8f0; padding: 12px 8px; color:#475569;">${i+1}</td>
-                <td style="border-bottom: 1px solid #e2e8f0; padding: 12px 8px; color:#334155; font-weight: 500;">${l.tanggal}</td>
-                <td style="border-bottom: 1px solid #e2e8f0; padding: 12px 8px;">
-                    <strong style="color:#0f172a; display:block; margin-bottom:2px;">${l.customer}</strong>
-                    <span style="color:#64748b; font-size:7.5pt;">${l.lokasi}</span>
+            <tr style="background:${bgRow};">
+                <td class="text-center" style="color:#64748b; font-weight:bold;">${i+1}</td>
+                <td style="font-weight:bold; color:#334155;">${l.tanggal}</td>
+                <td>
+                    <strong style="color:#0f172a; font-size:9pt; display:block;">${l.customer}</strong>
+                    <span style="color:#64748b; font-size:7.5pt;">Lokasi: ${l.lokasi} | ST: ${l.st}</span>
                 </td>
-                <td style="text-align:center; border-bottom: 1px solid #e2e8f0; padding: 12px 8px; font-weight:bold; color:#334155;">${l.durasi.toFixed(2)} <span style="font-size: 7pt; color: #94a3b8; font-weight: normal;">Jam</span></td>
-                <td style="text-align:right; border-bottom: 1px solid #e2e8f0; padding: 12px 8px; font-weight:bold; color:#0f172a;">Rp ${l.nominal.toLocaleString('id-ID')}</td>
-                <td style="text-align:center; border-bottom: 1px solid #e2e8f0; padding: 12px 8px;">
-                    <span style="background-color: ${badgeBg}; color: ${badgeColor}; padding: 5px 10px; border-radius: 6px; font-size: 7pt; font-weight: bold; letter-spacing: 0.5px;">${l.persetujuan}</span>
+                <td class="text-center" style="font-weight:bold; color:#475569;">${l.durasi}h</td>
+                <td class="text-right" style="font-weight:900; color:#0f172a;">Rp ${l.nominal.toLocaleString('id-ID')}</td>
+                <td class="text-center">
+                    <span style="padding:4px 8px; border-radius:6px; font-size:7pt; font-weight:900; ${stClass}">${l.persetujuan}</span>
                 </td>
             </tr>`;
     }).join('');
 
+    // =========================================================================
+    // 3. HTML BUILDER (PAGE 2: ANALISA BERDASARKAN ST)
+    // =========================================================================
+    const rowsSTHtml = Object.entries(groupST).map((entry, i) => {
+        const [stNum, data] = entry;
+        const bgRow = i % 2 === 0 ? '#ffffff' : '#f8fafc';
+        const custArr = Array.from(data.customers).join(', ');
+        return `
+            <tr style="background:${bgRow};">
+                <td style="font-weight:900; color:#1e40af; font-size:9pt;">${stNum}</td>
+                <td style="color:#475569; font-size:8pt; line-height:1.4;">${custArr}</td>
+                <td class="text-center" style="font-weight:bold; color:#0f172a;">${data.count} Titik</td>
+                <td class="text-center" style="font-weight:bold; color:#475569;">${data.durasi.toFixed(2)}h</td>
+                <td class="text-right" style="font-weight:900; color:#059669;">Rp ${data.nominal.toLocaleString('id-ID')}</td>
+            </tr>`;
+    }).join('');
+
+    // =========================================================================
+    // 4. HTML BUILDER (PAGE 3: ADVANCED STATISTICS)
+    // =========================================================================
+    const rowsCustHtml = Object.entries(groupCust).sort((a,b) => b[1].nominal - a[1].nominal).map((entry, i) => {
+        const [cust, data] = entry;
+        return `
+            <tr>
+                <td style="padding:12px 0; border-bottom:1px dashed #cbd5e1; font-weight:bold; color:#334155; font-size:9pt;">${i+1}. ${cust}</td>
+                <td class="text-center" style="padding:12px 0; border-bottom:1px dashed #cbd5e1; color:#64748b; font-size:8pt;">${data.count}x Kunjungan</td>
+                <td class="text-right" style="padding:12px 0; border-bottom:1px dashed #cbd5e1; font-weight:900; color:#0f172a; font-size:9pt;">Rp ${data.nominal.toLocaleString('id-ID')}</td>
+            </tr>`;
+    }).join('');
+
+    // =========================================================================
+    // 5. MASTER TEMPLATE ASSEMBLY (PURE TABLE LAYOUT)
+    // =========================================================================
     const pdfContent = document.createElement('div');
-    // Lebar absolut untuk mencegah tabel hancur/berantakan
-    pdfContent.style.width = "800px"; 
-    pdfContent.style.padding = "40px";
+    pdfContent.style.padding = "40px 50px"; // Format padding aman seperti cetak log
+    pdfContent.style.fontFamily = "'Helvetica Neue', Helvetica, Arial, sans-serif";
     pdfContent.style.backgroundColor = "#ffffff";
-    pdfContent.style.fontFamily = "Helvetica, Arial, sans-serif";
 
     pdfContent.innerHTML = `
-        <table style="width: 100%; border-bottom: 3px solid #1e3a8a; padding-bottom: 10px; margin-bottom: 25px;">
-            <tr>
-                <td style="vertical-align: bottom;">
-                    <h1 style="margin: 0; color: #1e3a8a; font-size: 26pt; font-weight: 900; letter-spacing: -0.5px;">C.E.P.U</h1>
-                    <p style="margin: 4px 0 0 0; font-size: 9pt; font-weight: bold; color: #64748b; letter-spacing: 1.5px;">AUDIT LOG PERJALANAN DINAS</p>
-                </td>
-                <td style="text-align: right; vertical-align: bottom;">
-                    <p style="margin: 0; font-size: 8pt; color: #94a3b8; text-transform: uppercase; font-weight: bold;">Periode Laporan</p>
-                    <p style="margin: 2px 0 0 0; font-size: 12pt; font-weight: 900; color: #2563eb; text-transform: uppercase; letter-spacing: 0.5px;">${periodeStr}</p>
-                </td>
-            </tr>
-        </table>
+        <style>
+            * { box-sizing: border-box; }
+            .page-break { page-break-before: always; padding-top: 40px; }
+            .kop-title { font-size: 26pt; font-weight: 900; color: #1e3a8a; letter-spacing: -1px; margin: 0; line-height: 1; }
+            .kop-subtitle { font-size: 9pt; font-weight: 800; color: #64748b; letter-spacing: 2px; text-transform: uppercase; margin-top: 8px; }
+            
+            .data-table { width: 100%; border-collapse: collapse; margin-bottom: 30px; font-size: 8.5pt; }
+            .data-table th, .data-table td { border-bottom: 1px solid #e2e8f0; padding: 12px 10px; vertical-align: middle; }
+            .data-table th { background-color: #1e3a8a; font-weight: 800; text-transform: uppercase; font-size: 7.5pt; color: #ffffff; border: 1px solid #1e3a8a; letter-spacing: 0.5px; }
+            
+            .text-center { text-align: center !important; }
+            .text-right { text-align: right !important; }
+            .text-left { text-align: left !important; }
+            
+            .section-title { font-size: 14pt; font-weight: 900; color: #0f172a; margin-bottom: 15px; border-left: 5px solid #3b82f6; padding-left: 10px; }
+        </style>
 
-        <table style="width: 100%; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 15px; margin-bottom: 25px; font-size: 9pt;">
-            <tr>
-                <td style="width: 15%; color: #64748b; padding: 6px 8px;">Nama Karyawan</td>
-                <td style="width: 35%; padding: 6px 8px; font-weight: bold; color: #0f172a; font-size: 10pt;">: ${user.nama}</td>
-                <td style="width: 15%; color: #64748b; padding: 6px 8px;">NRPP / Jabatan</td>
-                <td style="width: 35%; padding: 6px 8px; color: #334155; font-weight: bold;">: ${user.nrpp} / ${user.jabatan}</td>
-            </tr>
-            <tr>
-                <td style="color: #64748b; padding: 6px 8px;">Unit Kerja</td>
-                <td style="padding: 6px 8px; color: #334155;">: ${user.departemen} - ${user.lokasi}</td>
-                <td style="color: #64748b; padding: 6px 8px;">Waktu Cetak</td>
-                <td style="padding: 6px 8px; color: #334155;">: ${tglCetak}</td>
-            </tr>
-        </table>
-
-        <table style="width: 100%; margin-bottom: 30px; border-spacing: 12px 0; border-collapse: separate; margin-left: -12px;">
-            <tr>
-                <td style="width: 33.33%; border: 1px solid #e2e8f0; border-top: 4px solid #3b82f6; border-radius: 10px; padding: 18px; text-align: center; background: #ffffff;">
-                    <p style="margin: 0; font-size: 7.5pt; color: #64748b; font-weight: bold; letter-spacing: 0.5px;">TOTAL TRIP BULANAN</p>
-                    <p style="margin: 8px 0 0 0; font-size: 20pt; font-weight: 900; color: #0f172a;">${logs.length}</p>
-                </td>
-                <td style="width: 33.33%; border: 1px solid #e2e8f0; border-top: 4px solid #3b82f6; border-radius: 10px; padding: 18px; text-align: center; background: #ffffff;">
-                    <p style="margin: 0; font-size: 7.5pt; color: #64748b; font-weight: bold; letter-spacing: 0.5px;">AKUMULASI DURASI</p>
-                    <p style="margin: 8px 0 0 0; font-size: 20pt; font-weight: 900; color: #0f172a;">${totalDurasi.toFixed(2)} <span style="font-size:10pt; color:#64748b; font-weight: 600;">Jam</span></p>
-                </td>
-                <td style="width: 33.33%; border: 1px solid #e2e8f0; border-top: 4px solid #10b981; border-radius: 10px; padding: 18px; text-align: center; background: #ffffff;">
-                    <p style="margin: 0; font-size: 7.5pt; color: #64748b; font-weight: bold; letter-spacing: 0.5px;">TOTAL ESTIMASI UPD</p>
-                    <p style="margin: 8px 0 0 0; font-size: 20pt; font-weight: 900; color: #059669;"><span style="font-size:12pt; color:#10b981">Rp</span> ${totalNominal.toLocaleString('id-ID')}</p>
-                </td>
-            </tr>
-        </table>
-
-        <table style="width: 100%; border-collapse: collapse; font-size: 8.5pt;">
-            <thead>
+        <div>
+            <table style="width: 100%; border-bottom: 4px solid #1e3a8a; padding-bottom: 15px; margin-bottom: 30px;">
                 <tr>
-                    <th style="background: #f1f5f9; color: #475569; padding: 14px 8px; border-bottom: 2px solid #cbd5e1; text-align: center; width: 6%; font-weight: bold; letter-spacing: 0.5px;">NO</th>
-                    <th style="background: #f1f5f9; color: #475569; padding: 14px 8px; border-bottom: 2px solid #cbd5e1; text-align: left; width: 16%; font-weight: bold; letter-spacing: 0.5px;">WAKTU KELUAR</th>
-                    <th style="background: #f1f5f9; color: #475569; padding: 14px 8px; border-bottom: 2px solid #cbd5e1; text-align: left; width: 35%; font-weight: bold; letter-spacing: 0.5px;">CUSTOMER & DESTINASI</th>
-                    <th style="background: #f1f5f9; color: #475569; padding: 14px 8px; border-bottom: 2px solid #cbd5e1; text-align: center; width: 10%; font-weight: bold; letter-spacing: 0.5px;">DURASI</th>
-                    <th style="background: #f1f5f9; color: #475569; padding: 14px 8px; border-bottom: 2px solid #cbd5e1; text-align: right; width: 17%; font-weight: bold; letter-spacing: 0.5px;">NOMINAL</th>
-                    <th style="background: #f1f5f9; color: #475569; padding: 14px 8px; border-bottom: 2px solid #cbd5e1; text-align: center; width: 16%; font-weight: bold; letter-spacing: 0.5px;">APPROVAL</th>
+                    <td style="vertical-align: bottom;">
+                        <h1 class="kop-title">C.E.P.U <span style="font-weight:300; color:#94a3b8;">| ENTERPRISE</span></h1>
+                        <div class="kop-subtitle">Individual Performance Audit Log</div>
+                    </td>
+                    <td style="text-align: right; vertical-align: bottom;">
+                        <div style="font-size: 14pt; font-weight: 900; color: #1e3a8a; text-transform: uppercase;">PERIODE ${periodeStr}</div>
+                        <div style="font-size: 8pt; color: #94a3b8; font-weight: bold; margin-top: 5px;">Dicetak: ${tglCetak}</div>
+                    </td>
                 </tr>
-            </thead>
-            <tbody>
-                ${rowsHtml}
-            </tbody>
-        </table>
+            </table>
 
-        <div style="margin-top: 50px; text-align: right; page-break-inside: avoid;">
-            <div style="display: inline-block; text-align: center; width: 250px;">
-                <p style="margin: 0 0 60px 0; color: #64748b; font-size: 9pt;">Dicetak Oleh Sistem,</p>
-                <p style="margin: 0; font-weight: 900; color: #0f172a; font-size: 10pt; text-decoration: underline;">HRD COMMAND CENTER</p>
-                <p style="margin: 4px 0 0 0; font-size: 7.5pt; color: #94a3b8; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">Security Verified Log</p>
-            </div>
+            <table style="width: 100%; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 30px; padding: 20px;">
+                <tr>
+                    <td style="width: 33.33%; border-right: 1px solid #e2e8f0;">
+                        <div style="font-size: 7.5pt; color: #94a3b8; text-transform: uppercase; font-weight: 800; margin-bottom: 4px;">Identitas Personel</div>
+                        <div style="font-size: 11pt; color: #0f172a; font-weight: 900;">${user.nama} <span style="color:#64748b; font-weight:600; font-size:9pt;">(${user.nrpp})</span></div>
+                        <div style="font-size: 9pt; color: #475569; font-weight: bold; margin-top: 5px;">${user.jabatan}</div>
+                    </td>
+                    <td style="width: 33.33%; padding-left: 20px;">
+                        <div style="font-size: 7.5pt; color: #94a3b8; text-transform: uppercase; font-weight: 800; margin-bottom: 4px;">Unit / Lokasi Kerja</div>
+                        <div style="font-size: 11pt; color: #0f172a; font-weight: 900;">${user.departemen}</div>
+                        <div style="font-size: 9pt; color: #475569; font-weight: bold; margin-top: 5px;">Area: ${user.lokasi}</div>
+                    </td>
+                </tr>
+            </table>
+
+            <table style="width: 100%; margin-bottom: 30px; border-spacing: 15px 0; border-collapse: separate; margin-left: -15px; margin-right: -15px;">
+                <tr>
+                    <td style="width: 33.33%; background: #fff; border: 1px solid #cbd5e1; border-top: 5px solid #3b82f6; border-radius: 10px; padding: 20px; text-align: center;">
+                        <div style="font-size: 7.5pt; color: #64748b; text-transform: uppercase; font-weight: 800; margin-bottom: 5px;">Total Kunjungan</div>
+                        <div style="font-size: 22pt; font-weight: 900; color: #0f172a;">${logs.length} <span style="font-size:10pt; color:#64748b;">Titik</span></div>
+                    </td>
+                    <td style="width: 33.33%; background: #fff; border: 1px solid #cbd5e1; border-top: 5px solid #3b82f6; border-radius: 10px; padding: 20px; text-align: center;">
+                        <div style="font-size: 7.5pt; color: #64748b; text-transform: uppercase; font-weight: 800; margin-bottom: 5px;">Akumulasi Durasi</div>
+                        <div style="font-size: 22pt; font-weight: 900; color: #0f172a;">${totalDurasi.toFixed(2)} <span style="font-size:10pt; color:#64748b;">Jam</span></div>
+                    </td>
+                    <td style="width: 33.33%; background: #f0fdf4; border: 1px solid #a7f3d0; border-top: 5px solid #10b981; border-radius: 10px; padding: 20px; text-align: center;">
+                        <div style="font-size: 7.5pt; color: #047857; text-transform: uppercase; font-weight: 800; margin-bottom: 5px;">Total Pendapatan UPD</div>
+                        <div style="font-size: 22pt; font-weight: 900; color: #059669;"><span style="font-size:14pt;">Rp</span> ${totalUpd.toLocaleString('id-ID')}</div>
+                    </td>
+                </tr>
+            </table>
+
+            <div class="section-title">Rincian Log Harian</div>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th class="text-center" style="width:5%;">NO</th>
+                        <th class="text-left" style="width:15%;">TANGGAL</th>
+                        <th class="text-left" style="width:35%;">CUSTOMER & AREA</th>
+                        <th class="text-center" style="width:10%;">DURASI</th>
+                        <th class="text-right" style="width:15%;">NOMINAL</th>
+                        <th class="text-center" style="width:20%;">STATUS</th>
+                    </tr>
+                </thead>
+                <tbody>${rowsLogHtml}</tbody>
+            </table>
+        </div>
+
+        <div class="page-break">
+            <div class="section-title">Distribusi Surat Tugas (ST)</div>
+            <p style="font-size:9pt; color:#64748b; margin-bottom:20px; line-height:1.5;">Rekapitulasi akumulatif beban kerja dan nominal pendapatan yang dikelompokkan berdasarkan Nomor Surat Tugas (ST) resmi dari Epicor.</p>
+            
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th class="text-left" style="width:20%;">NOMOR ST</th>
+                        <th class="text-left" style="width:40%;">CAKUPAN CUSTOMER</th>
+                        <th class="text-center" style="width:15%;">KUNJUNGAN</th>
+                        <th class="text-center" style="width:10%;">DURASI</th>
+                        <th class="text-right" style="width:15%;">NOMINAL</th>
+                    </tr>
+                </thead>
+                <tbody>${rowsSTHtml}</tbody>
+            </table>
+        </div>
+
+        <div class="page-break">
+            <div class="section-title">Advanced Statistical Analytics</div>
+            <p style="font-size:9pt; color:#64748b; margin-bottom:30px;">Analisa mendalam mengenai metrik performa individu untuk optimalisasi operasional bulan berikutnya.</p>
+
+            <table style="width: 100%; border-spacing: 20px 0; border-collapse: separate; margin-left: -20px; margin-right: -20px;">
+                <tr>
+                    <td style="width: 45%; vertical-align: top;">
+                        <table style="width: 100%;">
+                            <tr>
+                                <td style="background:#fff7ed; border:1px solid #fed7aa; border-radius:12px; padding:20px; margin-bottom:20px; display:block;">
+                                    <div style="font-size:8pt; color:#c2410c; font-weight:900; text-transform:uppercase; margin-bottom:5px;">Hari Puncak (Peak Day)</div>
+                                    <div style="font-size:14pt; font-weight:900; color:#9a3412;">${peakDay[0]}</div>
+                                    <div style="font-size:9pt; color:#c2410c; font-weight:bold; margin-top:5px;">Pendapatan: Rp ${peakDay[1].toLocaleString('id-ID')}</div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:12px; padding:20px; margin-bottom:20px; display:block;">
+                                    <div style="font-size:8pt; color:#1d4ed8; font-weight:900; text-transform:uppercase; margin-bottom:5px;">Rata-Rata Durasi Kunjungan</div>
+                                    <div style="font-size:18pt; font-weight:900; color:#1e40af;">${avgDurasi} <span style="font-size:10pt;">Jam</span></div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="background:#f5f3ff; border:1px solid #ddd6fe; border-radius:12px; padding:20px; display:block;">
+                                    <div style="font-size:8pt; color:#6d28d9; font-weight:900; text-transform:uppercase; margin-bottom:5px;">Rata-Rata Nominal Kunjungan</div>
+                                    <div style="font-size:18pt; font-weight:900; color:#4c1d95;"><span style="font-size:12pt;">Rp</span> ${avgUpd.toLocaleString('id-ID', {maximumFractionDigits:0})}</div>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+
+                    <td style="width: 55%; vertical-align: top; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:25px;">
+                        <div style="font-size:10pt; color:#0f172a; font-weight:900; text-transform:uppercase; margin-bottom:20px; border-bottom:2px solid #cbd5e1; padding-bottom:10px;">Distribusi Top Customer</div>
+                        <table style="width:100%; border-collapse: collapse;">
+                            <tbody>${rowsCustHtml}</tbody>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+
+            <table style="width: 100%; margin-top: 80px;">
+                <tr>
+                    <td style="width: 60%;"></td>
+                    <td style="width: 40%; text-align: center;">
+                        <p style="margin: 0; color: #64748b; font-size: 9pt;">Divalidasi Secara Digital Oleh,</p>
+                        <p style="margin: 60px 0 0 0; font-weight: 900; color: #0f172a; font-size: 11pt; text-decoration: underline;">HRD COMMAND CENTER</p>
+                        <p style="margin: 4px 0 0 0; font-size: 7.5pt; color: #3b82f6; font-weight: 900; text-transform: uppercase; letter-spacing: 1px;">Sistem Terenkripsi C.E.P.U</p>
+                    </td>
+                </tr>
+            </table>
         </div>
     `;
 
+    // =========================================================================
+    // 6. KONFIGURASI PDF (SAFE MARGIN ENGINE)
+    // =========================================================================
     const opt = {
-        margin:       [0.4, 0.4, 0.4, 0.4],
-        filename:     `Audit_Log_${user.nrpp}_${periodeStr.replace(' ', '_')}.pdf`,
+        margin:       [0.4, 0.4, 0.4, 0.4], 
+        filename:     `AuditLog_Premium_${user.nrpp}_${filter.month}_${filter.year}.pdf`,
         image:        { type: 'jpeg', quality: 1 },
-        html2canvas:  { scale: 2, useCORS: true, letterRendering: true },
+        html2canvas:  { scale: 2, useCORS: true, letterRendering: true }, // windowWidth dihapus, biarkan natural!
         jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' }
     };
 
     html2pdf().set(opt).from(pdfContent).save().then(() => {
-        sysShowToast("Audit Log Premium berhasil diunduh!", "success");
+        sysShowToast("Audit Log Analytics Premium Berhasil Diunduh!", "success");
     }).catch(err => {
-        console.error(err);
-        sysShowToast("Gagal mengunduh PDF.", "error");
+        console.error("PDF Engine Error:", err);
+        sysShowToast("Gagal memproses PDF. Cek Console.", "error");
     });
 }
 
+// ==========================================================
+// MODAL UPDATE NO ST EPICOR & BULK SELECTION (SELF-SERVICE)
+// ==========================================================
+function action_openInputSTModal(stName, logs) {
+    const modalId = 'modal-update-st-epicor';
+
+    const btnCancel = DOM_Engine.create('button', 'w-full sm:w-auto px-5 py-2.5 text-sm font-bold text-slate-500 hover:bg-slate-100 rounded-xl transition-colors', { 
+        type: 'button', onClick: () => document.getElementById(modalId).remove() 
+    }, ['Batal']);
+
+    const btnSave = DOM_Engine.create('button', 'w-full sm:w-auto px-5 py-2.5 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md flex items-center justify-center gap-2 transition-all', { 
+        type: 'button', id: 'btn-save-new-st',
+        onClick: () => {
+            const newST = document.getElementById('inp-new-epicor-st').value.trim();
+            if(!newST) return sysShowToast("Nomor ST Epicor wajib diisi!", "error");
+            
+            const checkedBoxes = document.querySelectorAll('.chk-update-st:checked');
+            if(checkedBoxes.length === 0) return sysShowToast("Pilih minimal 1 kunjungan yang ingin dimasukkan ke ST ini!", "error");
+            
+            const trxIds = Array.from(checkedBoxes).map(cb => cb.value);
+            execute_updateSTEpicor(trxIds, newST, modalId);
+        }
+    }, [DOM_Engine.create('i', 'fa-solid fa-cloud-arrow-up'), 'Simpan & Update ST']);
+
+    // List Checkbox Perjalanan
+    const logElements = logs.map(l => {
+        return DOM_Engine.create('label', 'flex items-center gap-3 p-3 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-indigo-300 transition-colors shadow-sm mb-2 group', {}, [
+            DOM_Engine.create('input', 'chk-update-st w-5 h-5 text-indigo-600 rounded cursor-pointer border-slate-300', { type: 'checkbox', value: l.idTransaksi }),
+            DOM_Engine.create('div', 'flex-1', {}, [
+                DOM_Engine.create('p', 'text-sm font-bold text-slate-800 leading-tight group-hover:text-indigo-600', {}, [l.customer]),
+                DOM_Engine.create('p', 'text-[10px] text-slate-500', {}, [`Berangkat: ${l.waktuKeluar} | Durasi: ${l.durasi} Jam`])
+            ])
+        ]);
+    });
+
+    const formEdit = DOM_Engine.create('div', 'px-6 py-4 text-left max-h-[60vh] overflow-y-auto bg-slate-50', {}, [
+        DOM_Engine.create('div', 'mb-5', {}, [
+            DOM_Engine.create('label', 'block text-xs font-bold text-slate-600 mb-1 uppercase tracking-wider', {}, ['Nomor ST Resmi (Epicor)']),
+            DOM_Engine.create('input', 'input-premium w-full bg-white border-indigo-200 px-4 py-3 text-sm font-black uppercase text-indigo-700 shadow-inner', { 
+                type: 'text', id: 'inp-new-epicor-st', placeholder: 'Ketik Nomor ST Baru...',
+                onInput: function() { this.value = this.value.toUpperCase(); }
+            })
+        ]),
+        DOM_Engine.create('label', 'block text-xs font-bold text-slate-600 mb-2 uppercase tracking-wider', {}, ['Pilih Kunjungan (Centang yang sesuai):']),
+        DOM_Engine.create('div', '', {}, logElements)
+    ]);
+
+    const modalContent = DOM_Engine.create('div', 'bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-100 text-center relative fade-in-up', {}, [
+        DOM_Engine.create('div', 'p-5 border-b border-slate-100 flex justify-between items-center', {}, [
+            DOM_Engine.create('h3', 'font-extrabold text-slate-800 text-lg flex items-center gap-2', {}, [DOM_Engine.create('i', 'fa-solid fa-file-pen text-indigo-600'), 'Input No ST Epicor']),
+            DOM_Engine.create('button', 'text-slate-400 hover:text-red-500', { type: 'button', onClick: () => document.getElementById(modalId).remove() }, [DOM_Engine.create('i', 'fa-solid fa-times')])
+        ]),
+        formEdit,
+        DOM_Engine.create('div', 'p-5 border-t border-slate-100 bg-white flex flex-col sm:flex-row justify-end gap-3', {}, [btnCancel, btnSave]) 
+    ]);
+
+    document.body.appendChild(DOM_Engine.create('div', 'fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[110] flex items-center justify-center p-4 fade-in', { id: modalId }, [modalContent]));
+}
+
+function execute_updateSTEpicor(trxIds, newST, modalId) {
+    const btn = document.getElementById('btn-save-new-st');
+    if(!btn) return;
+    
+    btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Menyinkronkan...'; 
+    btn.disabled = true;
+
+    google.script.run
+      .withSuccessHandler(res => {
+          if(res.status === 'success') {
+              if(document.getElementById(modalId)) document.getElementById(modalId).remove();
+              sysShowToast(res.message, 'success');
+              renderWorkspace_LogPribadi(); // Refresh UI
+          } else {
+              sysShowToast(res.message, 'error');
+              btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> Simpan & Update ST'; 
+              btn.disabled = false;
+          }
+      })
+      .withFailureHandler(err => {
+          // ANTI LOADING ABADI: Menangkap error jaringan atau server crash
+          console.error("GAS System Error:", err);
+          sysShowToast("System Failure: " + err.message, "error");
+          btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> Simpan & Update ST'; 
+          btn.disabled = false;
+      })
+      .api_userUpdateST(trxIds, newST, SysState.user);
+}
+
+// ==========================================================
+// COMPONENT: PURE DOM INFO-SWIPER (GLASSMORPHISM)
+// ==========================================================
+const CEPU_InfoSwiper = {
+    create: function(id, slides) {
+        let currentSlide = 0;
+        const containerId = `swiper-cont-${id}`;
+        const trackId = `swiper-track-${id}`;
+
+        const nextSlide = () => {
+            currentSlide = (currentSlide + 1) % slides.length;
+            const track = document.getElementById(trackId);
+            if (track) track.style.transform = `translateX(-${currentSlide * 100}%)`;
+            updateDots();
+        };
+
+        const updateDots = () => {
+            slides.forEach((_, i) => {
+                const dot = document.getElementById(`dot-${id}-${i}`);
+                if (dot) dot.className = (i === currentSlide) ? 'w-4 h-1.5 bg-indigo-500 rounded-full transition-all duration-300' : 'w-1.5 h-1.5 bg-slate-300 rounded-full transition-all duration-300';
+            });
+        };
+
+        // Auto-swipe interval 5 detik
+        const interval = setInterval(() => {
+            if (document.getElementById(containerId)) { nextSlide(); } else { clearInterval(interval); }
+        }, 5000);
+
+        const slideElements = slides.map((s, index) => {
+            return DOM_Engine.create('div', 'min-w-full p-5 flex items-start gap-4', {}, [
+                DOM_Engine.create('div', 'w-12 h-12 rounded-2xl bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0 shadow-sm', {}, [
+                    DOM_Engine.create('i', `fa-solid ${s.icon} text-xl`)
+                ]),
+                DOM_Engine.create('div', 'flex-1', {}, [
+                    DOM_Engine.create('h4', 'text-sm font-bold text-slate-800 mb-1', {}, [s.title]),
+                    DOM_Engine.create('p', 'text-xs text-slate-500 leading-relaxed', {}, [s.content])
+                ])
+            ]);
+        });
+
+        const dots = slides.map((_, i) => DOM_Engine.create('div', i === 0 ? 'w-4 h-1.5 bg-indigo-500 rounded-full' : 'w-1.5 h-1.5 bg-slate-300 rounded-full', { id: `dot-${id}-${i}` }));
+
+        return DOM_Engine.create('div', 'relative overflow-hidden bg-white/70 backdrop-blur-md border border-white rounded-[2rem] shadow-premium mb-6 fade-in group', { id: containerId }, [
+            // Close Button
+            DOM_Engine.create('button', 'absolute top-3 right-3 z-10 w-8 h-8 flex items-center justify-center rounded-full hover:bg-rose-100 text-slate-400 hover:text-rose-500 transition-all', {
+                onClick: () => { clearInterval(interval); document.getElementById(containerId).remove(); }
+            }, [DOM_Engine.create('i', 'fa-solid fa-times text-xs')]),
+            
+            // Sliding Track
+            DOM_Engine.create('div', 'flex transition-transform duration-700 ease-in-out', { id: trackId, style: 'transform: translateX(0%);' }, slideElements),
+            
+            // Dots Navigation
+            DOM_Engine.create('div', 'flex justify-center gap-1.5 pb-4', {}, dots)
+        ]);
+    }
+};
+
+
 </script>
+

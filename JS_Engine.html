@@ -1,79 +1,324 @@
 <script>
-// ==============================================================================
-// FILE: JS_Engine.html
-// DESKRIPSI: Pure DOM Builder, Local Storage, Toast Notification & Device Security
-// ==============================================================================
+  // ==============================================================================
+  // FILE: JS_Engine.html
+  // DESKRIPSI: Pure DOM Builder, Local Storage, Toast Notification & Device Security
+  // ==============================================================================
 
-const DOM_Engine = {
-    create: function(tag, className = "", attributes = {}, children = []) {
-        const el = document.createElement(tag);
-        if (className) el.className = className;
-        
-        for (const key in attributes) {
-            if (key.startsWith('on') && typeof attributes[key] === 'function') {
-                el.addEventListener(key.substring(2).toLowerCase(), attributes[key]);
-            } else {
-                el.setAttribute(key, attributes[key]);
-            }
+  const DOM_Engine = {
+    create: function (tag, className = '', attributes = {}, children = []) {
+      const el = document.createElement(tag);
+      if (className) el.className = className;
+
+      for (const key in attributes) {
+        if (key.startsWith('on') && typeof attributes[key] === 'function') {
+          el.addEventListener(key.substring(2).toLowerCase(), attributes[key]);
+        } else {
+          el.setAttribute(key, attributes[key]);
         }
-        
-        children.forEach(child => {
-            if (!child) return;
-            if (typeof child === 'string' || typeof child === 'number') {
-                el.appendChild(document.createTextNode(child));
-            } else if (child instanceof Node) {
-                el.appendChild(child);
-            }
-        });
-        return el;
-    },
-    
-    clear: function(elementId) {
-        const el = document.getElementById(elementId);
-        if (el) el.innerHTML = '';
-    }
-};
+      }
 
-const SysState = {
+      children.forEach((child) => {
+        if (!child) return;
+        if (typeof child === 'string' || typeof child === 'number') {
+          el.appendChild(document.createTextNode(child));
+        } else if (child instanceof Node) {
+          el.appendChild(child);
+        }
+      });
+      return el;
+    },
+
+    clear: function (elementId) {
+      const el = document.getElementById(elementId);
+      if (el) el.innerHTML = '';
+    },
+  };
+
+  const SysState = {
     user: null,
     dinas: {
-        isActive: false,
-        data: null,
-        kordinat: null,
-        isLocValid: false,
-        isBarcodeValid: false
+      isActive: false,
+      data: null,
+      kordinat: null,
+      isLocValid: false,
+      isBarcodeValid: false,
     },
     ui: {
-        scannerActive: null,
-        sidebarOpen: false
-    }
-};
+      scannerActive: null,
+      sidebarOpen: false,
+    },
+  };
 
-function sysShowToast(message, type = 'success') {
+  function sysShowToast(message, type = 'success') {
     const container = document.getElementById('sys-toast-container');
-    const bgColor = type === 'success' ? 'bg-emerald-500' : (type === 'error' ? 'bg-red-500' : 'bg-blue-500');
-    const iconClass = type === 'success' ? 'fa-check-circle' : (type === 'error' ? 'fa-shield-halved' : 'fa-info-circle'); // Icon perisai untuk error fraud
-    
+    const bgColor =
+      type === 'success'
+        ? 'bg-emerald-500'
+        : type === 'error'
+          ? 'bg-red-500'
+          : 'bg-blue-500';
+    const iconClass =
+      type === 'success'
+        ? 'fa-check-circle'
+        : type === 'error'
+          ? 'fa-shield-halved'
+          : 'fa-info-circle'; // Icon perisai untuk error fraud
+
     const icon = DOM_Engine.create('i', `fa-solid ${iconClass} text-white`);
-    const text = DOM_Engine.create('span', 'text-white text-sm font-medium', {}, [message]);
-    const toast = DOM_Engine.create('div', `${bgColor} shadow-lg rounded-xl px-4 py-3 flex items-center gap-3 transform translate-x-full transition-transform duration-300 pointer-events-auto`, {}, [icon, text]);
-    
+    const text = DOM_Engine.create(
+      'span',
+      'text-white text-sm font-medium',
+      {},
+      [message]
+    );
+    const toast = DOM_Engine.create(
+      'div',
+      `${bgColor} shadow-lg rounded-xl px-4 py-3 flex items-center gap-3 transform translate-x-full transition-transform duration-300 pointer-events-auto`,
+      {},
+      [icon, text]
+    );
+
     container.appendChild(toast);
     setTimeout(() => toast.classList.remove('translate-x-full'), 10);
     setTimeout(() => {
-        toast.classList.add('translate-x-full');
-        setTimeout(() => toast.remove(), 300);
+      toast.classList.add('translate-x-full');
+      setTimeout(() => toast.remove(), 300);
     }, 4000); // Tampil lebih lama (4 detik) agar error terbaca
-}
+  }
 
-// SECURITY PROTOCOL: Device Fingerprinting
-function sysGetDeviceId() {
+  // [PATCH v1.5.0]: Adaptive iOS Fingerprinting
+  function sysGetDeviceId() {
     let deviceId = localStorage.getItem('cepu_device_id');
+
     if (!deviceId) {
-        // Generate pseudo-UUID (Unik per Browser/HP)
-        deviceId = 'DEV-' + Math.random().toString(36).substr(2, 9).toUpperCase() + '-' + Date.now().toString(36).toUpperCase();
-        localStorage.setItem('cepu_device_id', deviceId);
+      const nav = window.navigator || {};
+      const screen = window.screen || {};
+
+      // Merakit Entropi Fisik (Tahan terhadap penghapusan cache)
+      const fpString = `${nav.userAgent}|${screen.width}x${screen.height}|${nav.language}|${nav.hardwareConcurrency || 1}`;
+
+      // Sederhana tapi unik (32-bit hash)
+      let hash = 0;
+      for (let i = 0; i < fpString.length; i++) {
+        hash = (hash << 5) - hash + fpString.charCodeAt(i);
+        hash |= 0;
+      }
+
+      const stableFP = Math.abs(hash).toString(36).toUpperCase();
+      const randomEntropy = Math.random()
+        .toString(36)
+        .substring(2, 10)
+        .toUpperCase();
+
+      // Format Baru: FP-[STABLE_HASH]-[RANDOM_ENTROPY]
+      deviceId = `FP-${stableFP}-${randomEntropy}`;
+      localStorage.setItem('cepu_device_id', deviceId);
     }
     return deviceId;
-}
+  }
+
+  // ==========================================================
+  // [NEW ENGINE]: Privilege & Role Validators (Anti Case-Mismatch)
+  // ==========================================================
+  function sysIsSuperAdmin(user) {
+      if (!user || !user.jabatan) return false;
+      const j = String(user.jabatan).toUpperCase().trim();
+      return j === 'SUPER ADMIN' || j === 'ADMINISTRATOR';
+  }
+
+  function sysIsHRD(user) {
+      if (!user || !user.jabatan) return false;
+      return String(user.jabatan).toUpperCase().trim() === 'HRD';
+  }
+
+  function sysHasPrivilegedAccess(user) {
+      return sysIsSuperAdmin(user) || sysIsHRD(user);
+  }
+
+  // ==========================================================
+  // MODUL CORE: PREMIUM BOOTLOADER & FORCED UPDATE MODAL
+  // ==========================================================
+  document.addEventListener('DOMContentLoaded', function () {
+    // 1. RENDER OVERLAY LOADING AWAL
+    const bootOverlay = DOM_Engine.create(
+      'div',
+      'fixed inset-0 z-[99999] bg-slate-900 flex flex-col items-center justify-center transition-opacity duration-500',
+      { id: 'cepu-bootloader' },
+      [
+        DOM_Engine.create(
+          'div',
+          'flex flex-col items-center gap-6 fade-in-up',
+          {},
+          [
+            DOM_Engine.create(
+              'i',
+              'fa-solid fa-shield-halved text-6xl text-purple-500 drop-shadow-[0_0_15px_rgba(168,85,247,0.5)]'
+            ),
+            DOM_Engine.create(
+              'h1',
+              'text-2xl font-black text-white tracking-widest uppercase',
+              {},
+              ['C.E.P.U Enterprise']
+            ),
+            DOM_Engine.create(
+              'div',
+              'flex items-center gap-3 bg-slate-800 px-5 py-2.5 rounded-full border border-slate-700 shadow-inner',
+              {},
+              [
+                DOM_Engine.create(
+                  'i',
+                  'fa-solid fa-bolt text-amber-400 text-sm animate-pulse'
+                ),
+                DOM_Engine.create(
+                  'span',
+                  'text-slate-300 text-sm font-bold tracking-wider',
+                  {},
+                  ['Verifikasi Protokol...']
+                ),
+              ]
+            ),
+          ]
+        ),
+      ]
+    );
+    document.body.appendChild(bootOverlay);
+
+    setTimeout(() => {
+      // [ZERO LATENCY]: Ambil config hasil SSR dari Backend
+      const config =
+        typeof CEPU_SERVER_CONFIG !== 'undefined' ? CEPU_SERVER_CONFIG : null;
+      if (!config) return;
+
+      let localVersion = localStorage.getItem('cepu_app_version');
+      let localTick = localStorage.getItem('cepu_sec_tick');
+
+      // DETEKSI KETIDAKCOCOKAN VERSI ATAU KILL SWITCH
+      if (
+        localVersion !== config.latestVersion ||
+        localTick !== config.securityTick.toString()
+      ) {
+        // Tampilkan Modal Konfirmasi (Memaksa Klik User untuk Bypass Sandbox Browser)
+        action_showUpdateRequirementModal(config);
+      } else {
+        // Versi Sesuai: Hapus overlay dan jalankan aplikasi
+        bootOverlay.classList.add('opacity-0');
+        const savedUser = localStorage.getItem('cepu_session');
+        if (savedUser) {
+          const userObj = JSON.parse(savedUser);
+          if (userObj && userObj.nrpp) {
+            google.script.run.api_recordActivityLog(userObj.nrpp);
+          }
+        }
+        setTimeout(() => {
+          if (bootOverlay.parentNode)
+            bootOverlay.parentNode.removeChild(bootOverlay);
+        }, 500);
+      }
+    }, 100);
+  });
+
+  /**
+   * MODAL PAKSA UPDATE: Menampilkan versi terbaru dan tombol eksekusi refresh
+   */
+  function action_showUpdateRequirementModal(config) {
+    const modalId = 'modal-force-update';
+
+    const btnUpdate = DOM_Engine.create(
+      'button',
+      'w-full py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-black text-lg shadow-xl hover:shadow-indigo-500/20 transition-all flex items-center justify-center gap-3',
+      {
+        id: 'btn-exec-force-update',
+        onClick: function () {
+          const btn = document.getElementById('btn-exec-force-update');
+          btn.innerHTML =
+            '<i class="fa-solid fa-circle-notch fa-spin"></i> Menginstal...';
+          btn.disabled = true;
+
+          // 1. BACKUP DATA VITAL
+          const safeDeviceId = localStorage.getItem('cepu_device_id');
+          let safeSession = localStorage.getItem('cepu_session');
+          let safeDinas = localStorage.getItem('cepu_dinas_state');
+
+          // Protokol Force Logout Massal jika Security Tick berubah
+          if (
+            localStorage.getItem('cepu_sec_tick') !== null &&
+            localStorage.getItem('cepu_sec_tick') !==
+              config.securityTick.toString()
+          ) {
+            safeSession = null;
+            safeDinas = null;
+          }
+
+          // 2. ATOMIC CLEAR
+          localStorage.clear();
+          sessionStorage.clear();
+
+          // 3. RESTORE & LOCK VERSION
+          if (safeDeviceId)
+            localStorage.setItem('cepu_device_id', safeDeviceId);
+          if (safeSession) localStorage.setItem('cepu_session', safeSession);
+          if (safeDinas) localStorage.setItem('cepu_dinas_state', safeDinas);
+          localStorage.setItem('cepu_app_version', config.latestVersion);
+          localStorage.setItem('cepu_sec_tick', config.securityTick.toString());
+
+          // 4. BREAKOUT REFRESH (Metode window.open '_top' terbukti paling stabil)
+          const finalUrl = config.scriptUrl + '?v=' + Date.now();
+          window.open(finalUrl, '_top');
+        },
+      },
+      [
+        DOM_Engine.create('i', 'fa-solid fa-cloud-arrow-down'),
+        'Perbarui Sekarang',
+      ]
+    );
+
+    const modalContent = DOM_Engine.create(
+      'div',
+      'bg-white rounded-[2.5rem] shadow-2xl w-full max-w-sm overflow-hidden p-8 text-center relative border border-slate-100 fade-in-up',
+      {},
+      [
+        DOM_Engine.create(
+          'div',
+          'w-20 h-20 bg-indigo-50 border border-indigo-100 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-inner',
+          {},
+          [
+            DOM_Engine.create(
+              'i',
+              'fa-solid fa-rocket text-4xl text-indigo-500 animate-bounce'
+            ),
+          ]
+        ),
+        DOM_Engine.create(
+          'h3',
+          'font-black text-slate-800 text-2xl mb-2 tracking-tight',
+          {},
+          ['Pembaruan Tersedia']
+        ),
+        DOM_Engine.create(
+          'p',
+          'text-sm text-slate-500 mb-6 leading-relaxed',
+          {},
+          [
+            'Sistem mendeteksi versi terbaru ',
+            DOM_Engine.create(
+              'span',
+              'px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-md font-black',
+              {},
+              [config.latestVersion]
+            ),
+            '. Silakan perbarui untuk melanjutkan operasional.',
+          ]
+        ),
+        btnUpdate,
+      ]
+    );
+
+    const overlay = DOM_Engine.create(
+      'div',
+      'fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[100000] flex items-center justify-center p-6',
+      { id: modalId },
+      [modalContent]
+    );
+    document.body.appendChild(overlay);
+  }
 </script>
