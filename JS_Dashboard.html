@@ -31,7 +31,7 @@ function renderView_MainLayout() {
         document.head.appendChild(style);
     }
 
-    const overlay = DOM_Engine.create('div', 'fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 lg:hidden opacity-0 pointer-events-none transition-opacity duration-300', { id: 'nav-overlay', onClick: sysToggleMainSidebar });
+    const overlay = DOM_Engine.create('div', 'fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 md:hidden opacity-0 pointer-events-none transition-opacity duration-300', { id: 'nav-overlay', onClick: sysToggleMainSidebar });
 
     const menuItems = [
         DOM_Engine.create('div', 'sys-menu-item flex items-center gap-4 px-6 py-4 mx-4 rounded-2xl font-bold bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-lg cursor-pointer transition-transform hover:-translate-y-1 hover:shadow-indigo-500/30 mt-2', { 
@@ -108,7 +108,7 @@ function renderView_MainLayout() {
     // Mempertahankan state jika direfresh
     const initMinimizedClass = SysState.ui.sidebarMinimized ? 'sidebar-minimized' : '';
 
-    const sidebar = DOM_Engine.create('nav', `w-80 bg-white/80 backdrop-blur-2xl h-full flex flex-col fixed lg:static z-50 sidebar-transition -translate-x-full lg:translate-x-0 border-r border-slate-200 shadow-[4px_0_24px_rgba(0,0,0,0.02)] ${initMinimizedClass}`, { id: 'nav-sidebar' }, [
+    const sidebar = DOM_Engine.create('nav', `w-72 lg:w-80 bg-white/80 backdrop-blur-2xl h-full flex flex-col fixed lg:static z-50 sidebar-transition -translate-x-full lg:translate-x-0 border-r border-slate-200 shadow-[4px_0_24px_rgba(0,0,0,0.02)] ${initMinimizedClass}`, { id: 'nav-sidebar' }, [
         DOM_Engine.create('div', 'header-logo-wrap h-20 flex items-center gap-4 px-8 border-b border-slate-100 shrink-0 transition-all duration-300', {}, [
             DOM_Engine.create('div', 'w-10 h-10 bg-gradient-to-br from-indigo-600 to-blue-500 rounded-xl flex items-center justify-center shadow-md shrink-0', {}, [
                 DOM_Engine.create('i', 'fa-solid fa-layer-group text-white text-lg')
@@ -358,7 +358,7 @@ function action_startCamera() {
             for (let i = 0; i < devices.length; i++) {
                 if (devices[i].label.toLowerCase().includes("back") || devices[i].label.toLowerCase().includes("belakang")) { cameraId = devices[i].id; break; }
             }
-            localHtml5QrCode.start(cameraId, { fps: 10, qrbox: 250 }, processScanResult, () => {}).catch(() => { switchScannerTab('file'); });
+            localHtml5QrCode.start(cameraId, { fps: 10, qrbox: { width: Math.min(250, window.innerWidth - 80), height: Math.min(250, window.innerWidth - 80) } }, processScanResult, () => {}).catch(() => { switchScannerTab('file'); });
         } else { switchScannerTab('file'); }
     }).catch(() => { switchScannerTab('file'); });
 }
@@ -1240,45 +1240,6 @@ google.script.run
 // [HELPER UTILITY ENGINE] - OPERATIONAL ANALYTICS
 // ==========================================================
 
-/** * [FIXED]: Filter Bar Operasional dengan Protokol Anti-Selected-Bug
- */
-function _uiCreateOpsFilterBar() {
-    const createSel = (key, opts) => {
-        const optionElements = opts.map(o => {
-            const attrs = { value: o.v };
-            // HANYA suntikkan atribut 'selected' jika nilainya benar-benar TRUE
-            if (State_OpsFilters[key] === o.v) attrs.selected = "selected";
-            return DOM_Engine.create('option', '', attrs, [o.t]);
-        });
-
-        return DOM_Engine.create('select', 'bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold outline-none cursor-pointer focus:ring-2 focus:ring-indigo-500/20 shadow-sm', {
-            onChange: (e) => { 
-                State_OpsFilters[key] = e.target.value; 
-                renderWorkspace_OperationalAnalytics(); 
-            }
-        }, optionElements);
-    };
-
-    return DOM_Engine.create('div', 'mt-6 flex flex-wrap gap-3 fade-in', {}, [
-        DOM_Engine.create('div', 'flex flex-col gap-1', {}, [
-            DOM_Engine.create('label', 'text-[9px] font-black text-slate-400 uppercase ml-1', {}, ['Periode']),
-            createSel('period', [{v:'ALL', t:'Seluruh Waktu'}, {v:'1M', t:'Bulan Ini'}, {v:'1W', t:'Minggu Ini'}, {v:'1Y', t:'Tahun Ini'}, {v:'1D', t:'Hari Ini'}])
-        ]),
-        DOM_Engine.create('div', 'flex flex-col gap-1', {}, [
-            DOM_Engine.create('label', 'text-[9px] font-black text-slate-400 uppercase ml-1', {}, ['Divisi']),
-            createSel('division', [{v:'ALL', t:'Semua Divisi'}, {v:'ASS SERVICE', t:'ASS SERVICE'}, {v:'ASS RENTAL', t:'ASS RENTAL'}])
-        ]),
-        DOM_Engine.create('div', 'flex flex-col gap-1', {}, [
-            DOM_Engine.create('label', 'text-[9px] font-black text-slate-400 uppercase ml-1', {}, ['Lokasi']),
-            createSel('location', [{v:'ALL', t:'Semua Lokasi'}, {v:'RFMC', t:'RFMC'}, {v:'SATELITE', t:'SATELITE'}, {v:'FMC', t:'FMC'}])
-        ]),
-        // TOMBOL EKSPOR PDF
-        DOM_Engine.create('button', 'bg-rose-600 hover:bg-rose-700 text-white px-6 py-2 rounded-xl text-xs font-black flex items-center gap-2 shadow-lg shadow-rose-500/20 transition-all active:scale-95 mb-0.5', {
-            onClick: () => sysExportOpsPDF()
-        }, [DOM_Engine.create('i', 'fa-solid fa-file-pdf'), 'EXPORT PDF'])
-    ]);
-}
-
 /** * [NEW ENGINE]: Handle Direct Download PDF via Base64
  */
 function sysExportOpsPDF() {
@@ -1336,15 +1297,15 @@ function _uiCreateOpsFilterBar() {
     // [UPDATE]: Menggunakan items-end dan menambahkan tombol Export
     return DOM_Engine.create('div', 'mt-6 flex flex-wrap items-end gap-3 fade-in', {}, [
         DOM_Engine.create('div', 'flex flex-col gap-1', {}, [
-            DOM_Engine.create('label', 'text-[9px] font-black text-slate-400 uppercase ml-1', {}, ['Periode']),
+            DOM_Engine.create('label', 'text-[10px] sm:text-[11px] font-black text-slate-400 uppercase ml-1', {}, ['Periode']),
             createSel('period', [{v:'ALL', t:'Seluruh Waktu'}, {v:'1M', t:'Bulan Ini'}, {v:'1W', t:'Minggu Ini'}, {v:'1Y', t:'Tahun Ini'}, {v:'1D', t:'Hari Ini'}])
         ]),
         DOM_Engine.create('div', 'flex flex-col gap-1', {}, [
-            DOM_Engine.create('label', 'text-[9px] font-black text-slate-400 uppercase ml-1', {}, ['Divisi']),
+            DOM_Engine.create('label', 'text-[10px] sm:text-[11px] font-black text-slate-400 uppercase ml-1', {}, ['Divisi']),
             createSel('division', [{v:'ALL', t:'Semua Divisi'}, {v:'ASS SERVICE', t:'ASS SERVICE'}, {v:'ASS RENTAL', t:'ASS RENTAL'}])
         ]),
         DOM_Engine.create('div', 'flex flex-col gap-1', {}, [
-            DOM_Engine.create('label', 'text-[9px] font-black text-slate-400 uppercase ml-1', {}, ['Lokasi']),
+            DOM_Engine.create('label', 'text-[10px] sm:text-[11px] font-black text-slate-400 uppercase ml-1', {}, ['Lokasi']),
             createSel('location', [{v:'ALL', t:'Semua Lokasi'}, {v:'RFMC', t:'RFMC'}, {v:'SATELITE', t:'SATELITE'}, {v:'FMC', t:'FMC'}])
         ]),
         
@@ -1405,7 +1366,7 @@ function _uiCreateSTDetailTable(data) {
     ]));
 
     const tableEl = DOM_Engine.create('div', 'overflow-x-auto hide-scrollbar', {}, [
-        DOM_Engine.create('table', 'w-full text-left min-w-[700px]', {}, [
+        DOM_Engine.create('table', 'w-full text-left', {}, [
             DOM_Engine.create('thead', 'border-b border-white/10', {}, [
                 DOM_Engine.create('tr', '', {}, [
                     'NO ST', 
@@ -1583,7 +1544,7 @@ function _uiCreateOpsTrendLine(trendData) {
 
     // Bungkus dengan overflow-x-auto agar aman jika dibuka di HP
     return DOM_Engine.create('div', 'w-full overflow-x-auto hide-scrollbar', {}, [
-        DOM_Engine.create('div', 'min-w-[700px]', {}, [svg])
+        DOM_Engine.create('div', '', {}, [svg])
     ]);
 }
 
@@ -2019,7 +1980,7 @@ function buildUI_ApprovalDashboard(logs) {
         }, [
             // Freeze Area (0px - 410px)
             DOM_Engine.create('td', `w-[60px] min-w-[60px] px-3 py-4 text-center sticky left-0 ${stickyBg} z-10`, {}, [DOM_Engine.create('input', 'chk-approve-item w-5 h-5 text-indigo-600 rounded border-slate-300 cursor-pointer', { type: 'checkbox', value: log.idTransaksi, onChange: (e) => toggleCheckbox(e.target.value, e.target.checked) })]),
-            DOM_Engine.create('td', `w-[110px] min-w-[110px] px-3 py-4 whitespace-nowrap text-center sticky left-[60px] ${stickyBg} z-10`, {}, [DOM_Engine.create('div', 'flex items-center justify-center', {}, aksiButtons)]),
+            DOM_Engine.create('td', `hidden md:table-cell w-[110px] min-w-[110px] px-3 py-4 whitespace-nowrap text-center sticky left-[60px] ${stickyBg} z-10`, {}, [DOM_Engine.create('div', 'flex items-center justify-center', {}, aksiButtons)]),
             DOM_Engine.create('td', `w-[240px] min-w-[240px] px-5 py-4 whitespace-nowrap sticky left-[170px] ${stickyBg} z-10 shadow-[4px_0_6px_-1px_rgba(0,0,0,0.05)] border-r border-slate-100`, {}, [DOM_Engine.create('p', 'text-sm font-extrabold text-slate-800 truncate max-w-[200px]', {}, [log.nama]), DOM_Engine.create('p', 'text-[10px] font-bold text-slate-400 uppercase tracking-wider', {}, [log.nrpp])]),
             
             // Scrollable Area (Normal Columns)
@@ -2047,7 +2008,7 @@ function buildUI_ApprovalDashboard(logs) {
         DOM_Engine.create('th', 'w-[60px] min-w-[60px] px-3 py-4 text-center sticky top-0 left-0 bg-slate-50 z-30 shadow-sm', {}, [
             DOM_Engine.create('input', 'w-5 h-5 cursor-pointer', { id: 'chk-all-approval', type: 'checkbox', onChange: (e) => toggleCheckAll(e.target.checked) })
         ]),
-        DOM_Engine.create('th', 'w-[110px] min-w-[110px] px-3 py-4 text-center text-xs font-extrabold text-slate-500 uppercase tracking-widest sticky top-0 left-[60px] bg-slate-50 z-30 shadow-sm', {}, ['Aksi']),
+            DOM_Engine.create('th', 'hidden md:table-cell w-[110px] min-w-[110px] px-3 py-4 text-center text-xs font-extrabold text-slate-500 uppercase tracking-widest sticky top-0 left-[60px] bg-slate-50 z-30 shadow-sm', {}, ['Aksi']),
         DOM_Engine.create('th', 'w-[240px] min-w-[240px] px-5 py-4 text-left text-xs font-extrabold text-slate-500 uppercase tracking-widest sticky top-0 left-[170px] bg-slate-50 z-30 shadow-[4px_2px_6px_-1px_rgba(0,0,0,0.05)] border-r border-slate-200', {}, ['Personel']),
         
         // [SCROLLABLE HEADERS]
@@ -3533,7 +3494,7 @@ const chartSection = DOM_Engine.create('div', 'bg-white rounded-[2rem] p-8 shado
             ]);
 
             // 6. LAYOUT ASSEMBLY
-            const layoutGrid = DOM_Engine.create('div', 'grid grid-cols-1 lg:grid-cols-12 gap-8', {}, [
+            const layoutGrid = DOM_Engine.create('div', 'grid grid-cols-1 md:grid-cols-6 lg:grid-cols-12 gap-8', {}, [
                 // KOLOM KIRI (Cost Center)
                 DOM_Engine.create('div', 'lg:col-span-4 flex flex-col gap-6', {}, [
                     DOM_Engine.create('h3', 'text-xl font-black text-slate-800 flex items-center gap-3 pl-2', {}, [DOM_Engine.create('i', 'fa-solid fa-sitemap text-amber-500'), 'Cost Center Breakdown']),

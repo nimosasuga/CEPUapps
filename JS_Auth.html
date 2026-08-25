@@ -44,7 +44,7 @@ function renderView_Login() {
         'Masalah Login? Bersihkan Cache'
     ]);
 
-    const form = DOM_Engine.create('form', 'w-full max-w-sm glass p-10 rounded-[2rem] shadow-premium relative z-10 border border-white/50 fade-in-up', { onSubmit: handleAction_Login }, [
+    const form = DOM_Engine.create('form', 'w-full max-w-sm glass p-6 sm:p-10 rounded-[2rem] shadow-premium relative z-10 border border-white/50 fade-in-up', { onSubmit: handleAction_Login }, [
         DOM_Engine.create('div', 'text-center mb-8', {}, [
             DOM_Engine.create('h2', 'text-3xl font-extrabold text-slate-800 mb-2 tracking-tight', {}, ['Selamat Datang']),
             DOM_Engine.create('p', 'text-slate-500 text-sm font-semibold', {}, ['Verifikasi identitas perangkat Anda.'])
