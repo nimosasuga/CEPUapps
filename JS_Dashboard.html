@@ -1954,18 +1954,24 @@ function buildUI_ApprovalDashboard(logs) {
             statusUI = DOM_Engine.create('span', 'text-[10px] font-bold px-3 py-1.5 rounded-full bg-slate-100 text-slate-600 shadow-sm', {}, [log.persetujuan]);
         }
 
-        const btnEdit = DOM_Engine.create('button', 'w-9 h-9 bg-amber-100 text-amber-600 hover:bg-amber-500 hover:text-white rounded-xl flex items-center justify-center transition-all shadow-sm border border-amber-200 hover:border-amber-500', {
+        const createBtnEdit = () => DOM_Engine.create('button', 'w-9 h-9 bg-amber-100 text-amber-600 hover:bg-amber-500 hover:text-white rounded-xl flex items-center justify-center transition-all shadow-sm border border-amber-200 hover:border-amber-500', {
             title: 'Koreksi Data (Sidang HRD)',
             onClick: () => action_openEditSidang(log)
         }, [DOM_Engine.create('i', 'fa-solid fa-pen-to-square')]);
 
-        const aksiButtons = [btnEdit];
+        const createBtnUnlock = () => DOM_Engine.create('button', 'w-9 h-9 bg-indigo-100 text-indigo-600 hover:bg-indigo-600 hover:text-white rounded-xl flex items-center justify-center transition-all shadow-sm border border-indigo-200 ml-2', {
+            title: 'Buka Gembok Cetak (Mekanik bisa print ulang)',
+            onClick: () => action_openUnlockModal(log.customer, log.idTransaksi, log.nrpp)
+        }, [DOM_Engine.create('i', 'fa-solid fa-lock-open')]);
+
+        const tableAksiButtons = [createBtnEdit()];
         if (log.statusKlaim && log.statusKlaim.toUpperCase().includes("SUDAH")) {
-            const btnUnlock = DOM_Engine.create('button', 'w-9 h-9 bg-indigo-100 text-indigo-600 hover:bg-indigo-600 hover:text-white rounded-xl flex items-center justify-center transition-all shadow-sm border border-indigo-200 ml-2', {
-                title: 'Buka Gembok Cetak (Mekanik bisa print ulang)',
-                onClick: () => action_openUnlockModal(log.customer, log.idTransaksi, log.nrpp) 
-            }, [DOM_Engine.create('i', 'fa-solid fa-lock-open')]);
-            aksiButtons.push(btnUnlock);
+            tableAksiButtons.push(createBtnUnlock());
+        }
+
+        const mobileAksiButtons = [createBtnEdit()];
+        if (log.statusKlaim && log.statusKlaim.toUpperCase().includes("SUDAH")) {
+            mobileAksiButtons.push(createBtnUnlock());
         }
 
         let stickyBg = log.isAnomali ? 'bg-rose-50 group-hover:bg-rose-100' : 'bg-white group-hover:bg-slate-50';
@@ -1976,7 +1982,7 @@ function buildUI_ApprovalDashboard(logs) {
             'data-status': rowStatusType
         }, [
             DOM_Engine.create('td', `w-[60px] min-w-[60px] px-3 py-4 text-center sticky left-0 ${stickyBg} z-10`, {}, [DOM_Engine.create('input', 'chk-approve-item w-5 h-5 text-indigo-600 rounded border-slate-300 cursor-pointer', { type: 'checkbox', value: log.idTransaksi, onChange: (e) => toggleCheckbox(e.target.value, e.target.checked) })]),
-            DOM_Engine.create('td', 'hidden md:table-cell w-[110px] min-w-[110px] px-3 py-4 whitespace-nowrap text-center sticky left-[60px] bg-white z-10', {}, [DOM_Engine.create('div', 'flex items-center justify-center', {}, aksiButtons)]),
+            DOM_Engine.create('td', 'hidden md:table-cell w-[110px] min-w-[110px] px-3 py-4 whitespace-nowrap text-center sticky left-[60px] bg-white z-10', {}, [DOM_Engine.create('div', 'flex items-center justify-center', {}, tableAksiButtons)]),
             DOM_Engine.create('td', `w-[240px] min-w-[240px] px-5 py-4 whitespace-nowrap sticky left-[170px] ${stickyBg} z-10 shadow-[4px_0_6px_-1px_rgba(0,0,0,0.05)] border-r border-slate-100`, {}, [DOM_Engine.create('p', 'text-sm font-extrabold text-slate-800 truncate max-w-[200px]', {}, [log.nama]), DOM_Engine.create('p', 'text-[10px] font-bold text-slate-400 uppercase tracking-wider', {}, [log.nrpp])]),
             DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap', {}, [
                 DOM_Engine.create('p', 'text-sm font-bold text-slate-700', {}, [log.customer]),
@@ -2042,10 +2048,7 @@ function buildUI_ApprovalDashboard(logs) {
             ]),
             // Action Buttons
             DOM_Engine.create('div', 'flex items-center gap-2 pt-2 border-t border-slate-100', {}, [
-                ...aksiButtons.map(b => DOM_Engine.create('div', 'flex-1', {}, [b])),
-                DOM_Engine.create('div', 'flex-1', {}, [DOM_Engine.create('button', 'w-full py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-500 hover:text-white rounded-xl text-xs font-bold transition-all border border-indigo-100 flex items-center justify-center gap-1', {
-                    onClick: () => action_openEditSidang(log)
-                }, [DOM_Engine.create('i', 'fa-solid fa-pen-to-square'), ' Sidang'])])
+                ...mobileAksiButtons.map(b => DOM_Engine.create('div', 'flex-1', {}, [b]))
             ])
         ]);
 

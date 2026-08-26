@@ -3218,7 +3218,7 @@ function api_getScriptUrl() {
  */
 function api_getSystemConfig() {
   return {
-    latestVersion: 'v1.10.41', // Naikkan versi untuk deployment ini
+    latestVersion: 'v1.10.42', // Naikkan versi untuk deployment ini
     scriptUrl: ScriptApp.getService().getUrl(),
 
     // [KILL SWITCH]: NAIKKAN ANGKA INI JIKA INGIN MEMAKSA SEMUA USER LOGOUT!
