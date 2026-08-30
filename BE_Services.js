@@ -3219,7 +3219,7 @@ function api_getScriptUrl() {
  */
 function api_getSystemConfig() {
   return {
-    latestVersion: 'v1.10.44',
+    latestVersion: 'v1.10.45',
     scriptUrl: ScriptApp.getService().getUrl(),
 
     // [KILL SWITCH]: NAIKKAN ANGKA INI JIKA INGIN MEMAKSA SEMUA USER LOGOUT!

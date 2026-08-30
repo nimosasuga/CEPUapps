@@ -1943,28 +1943,29 @@ function buildUI_ApprovalDashboard(logs) {
     };
 
     // [UI BUILDER]: Enterprise Filter Bar
-    const filterBar = DOM_Engine.create('div', 'bg-white border border-slate-200 p-4 rounded-2xl mb-4 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 shadow-sm fade-in-up', {}, [
-        DOM_Engine.create('div', 'flex items-center gap-3 w-full xl:w-auto bg-slate-50 px-4 py-2.5 rounded-xl border border-slate-200 focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-100 transition-all', {}, [
-            DOM_Engine.create('i', 'fa-solid fa-magnifying-glass text-slate-400'),
-            DOM_Engine.create('input', 'bg-transparent border-none outline-none text-sm font-semibold text-slate-700 w-full md:w-64 placeholder-slate-400', {
+    const filterBar = DOM_Engine.create('div', 'bg-white border border-slate-200 p-4 rounded-2xl mb-4 flex flex-wrap items-start xl:items-center gap-4 shadow-sm fade-in-up', {}, [
+        DOM_Engine.create('div', 'flex items-center gap-3 w-full xl:flex-1 min-w-0 bg-slate-50 px-4 py-2.5 rounded-xl border border-slate-200 focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-100 transition-all', {}, [
+            DOM_Engine.create('i', 'fa-solid fa-magnifying-glass text-slate-400 flex-shrink-0'),
+            DOM_Engine.create('input', 'bg-transparent border-none outline-none text-sm font-semibold text-slate-700 w-full min-w-0 placeholder-slate-400', {
                 id: 'filter-search-approval', type: 'text', placeholder: 'Cari Personel, NRPP, atau Customer...',
                 onInput: executeFilter
             })
         ]),
-        DOM_Engine.create('div', 'flex flex-col md:flex-row items-start md:items-center gap-3 w-full xl:w-auto', {}, [
-            DOM_Engine.create('div', 'flex items-center gap-3 w-full md:w-auto', {}, [
-                DOM_Engine.create('label', 'text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap', {}, ['Filter Bulan:']),
-                DOM_Engine.create('select', 'input-premium bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-700 outline-none cursor-pointer w-full md:w-auto', {
+        DOM_Engine.create('div', 'flex flex-wrap items-start md:items-center gap-3 w-full xl:w-auto min-w-0', {}, [
+            DOM_Engine.create('div', 'flex flex-wrap sm:flex-nowrap items-center gap-3 w-full md:w-auto min-w-0', {}, [
+                DOM_Engine.create('label', 'text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap flex-shrink-0', {}, ['Filter Bulan:']),
+                DOM_Engine.create('select', 'input-premium bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-700 outline-none cursor-pointer w-full sm:w-auto max-w-xs min-w-0 truncate', {
                     id: 'filter-bulan-approval', onChange: executeFilter
                 }, [
                     DOM_Engine.create('option', '', { value: 'ALL' }, ['Semua Bulan']),
                     ...monthOpts
                 ])
             ]),
-            DOM_Engine.create('div', 'flex items-center gap-3 w-full md:w-auto', {}, [
-                DOM_Engine.create('label', 'text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap', {}, ['Kategori Status:']),
-                DOM_Engine.create('select', 'input-premium bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-700 outline-none cursor-pointer w-full md:w-auto', {
-                    id: 'filter-status-approval', onChange: executeFilter
+            DOM_Engine.create('div', 'flex flex-wrap sm:flex-nowrap items-center gap-3 w-full md:w-auto min-w-0', {}, [
+                DOM_Engine.create('label', 'text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap flex-shrink-0', {}, ['Kategori Status:']),
+                DOM_Engine.create('select', 'input-premium bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-700 outline-none cursor-pointer w-full sm:w-auto max-w-xs min-w-0 truncate', {
+                    id: 'filter-status-approval', onChange: executeFilter,
+                    style: 'text-overflow: ellipsis; white-space: nowrap; overflow: hidden;'
                 }, [
                     DOM_Engine.create('option', '', { value: 'ALL' }, ['Semua Dokumen']),
                     DOM_Engine.create('option', '', { value: 'pending' }, ['Menunggu Approval']),
