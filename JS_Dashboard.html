@@ -1977,19 +1977,19 @@ function buildUI_ApprovalDashboard(logs) {
     ]);
 
     const trs = logs.map(log => {
-        let jamMasukUI, statusUI, rowBg = 'hover:bg-slate-50/50';
+        let jamMasukUI, createStatusUI, rowBg = 'hover:bg-slate-50/50';
         let rowStatusType = 'pending';
 
         if (log.isAnomali) {
             rowBg = 'bg-rose-50/30 hover:bg-rose-50';
             rowStatusType = 'anomali';
             jamMasukUI = DOM_Engine.create('div', 'flex items-center gap-2 text-rose-500', {}, [DOM_Engine.create('i', 'fa-solid fa-triangle-exclamation animate-pulse'), DOM_Engine.create('span', 'text-sm font-extrabold', {}, ['AUTO-CHECKOUT (23:59)'])]);
-            statusUI = DOM_Engine.create('span', 'text-[10px] font-bold px-3 py-1.5 rounded-full bg-rose-100 text-rose-600 shadow-sm', {}, ['ANOMALI / SIDANG']);
+            createStatusUI = () => DOM_Engine.create('span', 'text-[10px] font-bold px-3 py-1.5 rounded-full bg-rose-100 text-rose-600 shadow-sm', {}, ['ANOMALI / SIDANG']);
         } else {
             if (log.persetujuan.toUpperCase().includes('APPROVED')) rowStatusType = 'approved';
             else if (log.statusKlaim.toUpperCase().includes('SUDAH')) rowStatusType = 'terkunci';
             jamMasukUI = DOM_Engine.create('span', 'text-sm font-bold text-slate-700', {}, [log.waktuMasuk, ' WIB']);
-            statusUI = DOM_Engine.create('span', 'text-[10px] font-bold px-3 py-1.5 rounded-full bg-slate-100 text-slate-600 shadow-sm', {}, [log.persetujuan]);
+            createStatusUI = () => DOM_Engine.create('span', 'text-[10px] font-bold px-3 py-1.5 rounded-full bg-slate-100 text-slate-600 shadow-sm', {}, [log.persetujuan || 'PENDING']);
         }
 
         const createBtnEdit = () => DOM_Engine.create('button', 'w-9 h-9 bg-amber-100 text-amber-600 hover:bg-amber-500 hover:text-white rounded-xl flex items-center justify-center transition-all shadow-sm border border-amber-200 hover:border-amber-500', {
@@ -2015,7 +2015,7 @@ function buildUI_ApprovalDashboard(logs) {
         let stickyBg = log.isAnomali ? 'bg-rose-50 group-hover:bg-rose-100' : 'bg-white group-hover:bg-slate-50';
 
         // === TABLE ROW (Desktop/Tablet) ===
-        const tableRow = DOM_Engine.create('tr', `approval-row-item ${rowBg} transition-colors border-b border-slate-100 hover:z-20 relative group`, {
+        const tableRow = DOM_Engine.create('tr', `approval-row-item ${rowBg} transition-colors border-b border-slate-100 group`, {
             'data-search': `${log.nama} ${log.nrpp} ${log.customer}`.toLowerCase(),
             'data-status': rowStatusType,
             'data-bulan': monthKey(log)
@@ -2035,7 +2035,7 @@ function buildUI_ApprovalDashboard(logs) {
             DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap text-sm font-extrabold text-emerald-600 text-right', {}, [
                 log.nominal ? `Rp ${Number(log.nominal).toLocaleString('id-ID')}` : 'Rp 0'
             ]),
-            DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap text-center', {}, [statusUI])
+            DOM_Engine.create('td', 'px-5 py-4 whitespace-nowrap text-center', {}, [createStatusUI()])
         ]);
 
         // === MOBILE CARD ===
@@ -2057,7 +2057,7 @@ function buildUI_ApprovalDashboard(logs) {
                         DOM_Engine.create('p', 'text-[10px] font-bold text-slate-400 uppercase tracking-wider', {}, [log.nrpp])
                     ])
                 ]),
-                statusUI
+                createStatusUI()
             ]),
             // Info Grid
             DOM_Engine.create('div', 'grid grid-cols-2 gap-2 mb-3', {}, [
@@ -2100,17 +2100,17 @@ function buildUI_ApprovalDashboard(logs) {
 
     // [UX UPDATE]: Menambahkan header UPD pada susunan sticky header
     const theadThs = [
-        DOM_Engine.create('th', 'w-[60px] min-w-[60px] px-3 py-4 text-center sticky top-0 left-0 bg-slate-50 z-30 shadow-sm', {}, [
+        DOM_Engine.create('th', 'w-[60px] min-w-[60px] px-3 py-4 text-center sticky top-0 left-0 bg-slate-50 z-40 shadow-sm', {}, [
             DOM_Engine.create('input', 'w-5 h-5 cursor-pointer', { id: 'chk-all-approval', type: 'checkbox', onChange: (e) => toggleCheckAll(e.target.checked) })
         ]),
-            DOM_Engine.create('th', 'hidden md:table-cell w-[110px] min-w-[110px] px-3 py-4 text-center text-xs font-extrabold text-slate-500 uppercase tracking-widest sticky top-0 left-[60px] bg-slate-50 z-30 shadow-sm', {}, ['Aksi']),
-        DOM_Engine.create('th', 'w-[240px] min-w-[240px] px-5 py-4 text-left text-xs font-extrabold text-slate-500 uppercase tracking-widest sticky top-0 left-[170px] bg-slate-50 z-30 shadow-[4px_2px_6px_-1px_rgba(0,0,0,0.05)] border-r border-slate-200', {}, ['Personel']),
+            DOM_Engine.create('th', 'hidden md:table-cell w-[110px] min-w-[110px] px-3 py-4 text-center text-xs font-extrabold text-slate-500 uppercase tracking-widest sticky top-0 left-[60px] bg-slate-50 z-40 shadow-sm', {}, ['Aksi']),
+        DOM_Engine.create('th', 'w-[240px] min-w-[240px] px-5 py-4 text-left text-xs font-extrabold text-slate-500 uppercase tracking-widest sticky top-0 left-[170px] bg-slate-50 z-40 shadow-[4px_2px_6px_-1px_rgba(0,0,0,0.05)] border-r border-slate-200', {}, ['Personel']),
         
         // [SCROLLABLE HEADERS]
         ...['Customer & Lokasi', 'Jam Keluar', 'Jam Masuk', 'UPD', 'Status'].map(h => {
             // Berikan perataan kanan khusus untuk header UPD
             const isUpd = h === 'UPD';
-            return DOM_Engine.create('th', `px-5 py-4 ${isUpd ? 'text-right' : 'text-left'} text-xs font-extrabold text-slate-500 uppercase tracking-widest sticky top-0 bg-slate-50/95 backdrop-blur-md z-20 shadow-sm`, {}, [h]);
+            return DOM_Engine.create('th', `px-5 py-4 ${isUpd ? 'text-right' : 'text-left'} text-xs font-extrabold text-slate-500 uppercase tracking-widest sticky top-0 bg-slate-50 z-40 shadow-sm`, {}, [h]);
         })
     ];
 
