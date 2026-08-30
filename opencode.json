@@ -1,0 +1,46 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    "AGENTS.md",
+    "OBSIDIAN_MEMORY/01_RULES/*.md",
+    "OBSIDIAN_MEMORY/02_ARCHITECTURE/*.md",
+    "RESPONSIVE_RULES.md"
+  ],
+  "default_agent": "build",
+  "share": "disabled",
+  "snapshot": true,
+  "compaction": {
+    "auto": true,
+    "prune": false
+  },
+  "permission": {
+    "edit": "ask",
+    "write": "ask",
+    "bash": {
+      "*": "ask",
+      "git status*": "allow",
+      "git diff*": "allow",
+      "git log*": "allow",
+      "npm run lint*": "allow",
+      "npm run typecheck*": "allow",
+      "npm test*": "allow",
+      "clasp status*": "allow",
+      "clasp push*": "ask",
+      "git add*": "ask",
+      "git commit*": "ask",
+      "git push*": "ask",
+      "rm *": "deny",
+      "Remove-Item *": "deny"
+    },
+    "external_directory": {
+      "*": "ask",
+      "C:/Users/kanak/Documents/PAPA NAKA/GAS/CEPU APP/CEPUapps/**": "allow"
+    }
+  },
+  "watcher": {
+    "ignore": [
+      ".git/**",
+      ".obsidian/**"
+    ]
+  }
+}
