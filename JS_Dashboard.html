@@ -475,11 +475,7 @@ document.addEventListener("DOMContentLoaded", () => {
     
     if (uS) { 
         SysState.user = JSON.parse(uS); 
-        if (dS) { 
-            SysState.dinas.isActive = true; 
-            SysState.dinas.data = JSON.parse(dS); 
-        }
-        renderView_MainLayout();
+        syncDinasStateFromServer(renderView_MainLayout);
     } else { 
         renderView_Login(); 
     }
@@ -2470,6 +2466,39 @@ function renderWorkspace_LogPribadi() {
             container.innerHTML = `<div class="p-10 text-center text-red-500"><b>Koneksi Gagal:</b> ${err.message}</div>`;
         })
         .api_getLogPribadi(SysState.user, targetPeriode); // Kirim targetPeriode ke BE
+}
+
+function syncDinasStateFromServer(nextRender) {
+    const dS = localStorage.getItem('cepu_dinas_state');
+    if (!dS) return nextRender();
+
+    try {
+        const cached = JSON.parse(dS);
+        google.script.run
+            .withSuccessHandler((res) => {
+                if (res.status === 'success' && res.data && res.data.activeTrip) {
+                    SysState.dinas.isActive = true;
+                    SysState.dinas.data = res.data.activeTrip;
+                    localStorage.setItem('cepu_dinas_state', JSON.stringify(res.data.activeTrip));
+                } else {
+                    localStorage.removeItem('cepu_dinas_state');
+                    SysState.dinas.isActive = false;
+                    SysState.dinas.data = null;
+                }
+                nextRender();
+            })
+            .withFailureHandler(() => {
+                SysState.dinas.isActive = true;
+                SysState.dinas.data = cached;
+                nextRender();
+            })
+            .api_getInitFormData(SysState.user);
+    } catch (e) {
+        localStorage.removeItem('cepu_dinas_state');
+        SysState.dinas.isActive = false;
+        SysState.dinas.data = null;
+        nextRender();
+    }
 }
 
 function buildUI_LogPribadi(groupedData, targetPeriode) {

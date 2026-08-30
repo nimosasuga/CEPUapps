@@ -6,6 +6,7 @@
 // ==============================================================================
 
 function doGet(e) {
+  e = e || { parameter: {} };
   // 1. Logika Verifikasi Publik (Tanpa Login)
 if (e.parameter.verify_st && e.parameter.nrpp) {
     return renderPublicVerification(
@@ -3218,7 +3219,7 @@ function api_getScriptUrl() {
  */
 function api_getSystemConfig() {
   return {
-    latestVersion: 'v1.10.42', // Naikkan versi untuk deployment ini
+    latestVersion: 'v1.10.43', // Naikkan versi untuk deployment ini
     scriptUrl: ScriptApp.getService().getUrl(),
 
     // [KILL SWITCH]: NAIKKAN ANGKA INI JIKA INGIN MEMAKSA SEMUA USER LOGOUT!
