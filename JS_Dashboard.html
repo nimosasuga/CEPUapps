@@ -4072,7 +4072,7 @@ function action_openInputSTModal(stName, logs) {
         return DOM_Engine.create('label', 'flex items-center gap-3 p-3 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-indigo-300 transition-colors shadow-sm mb-2 group', {}, [
             DOM_Engine.create('input', 'chk-update-st w-5 h-5 text-indigo-600 rounded cursor-pointer border-slate-300', { type: 'checkbox', value: l.idTransaksi }),
             DOM_Engine.create('div', 'flex-1', {}, [
-                DOM_Engine.create('p', 'text-sm font-bold text-slate-800 leading-tight group-hover:text-indigo-600', {}, [l.customer]),
+                DOM_Engine.create('p', 'text-sm font-bold text-slate-800 leading-tight group-hover:text-indigo-600', {}, [`${l.customer} ${l.lokasi || '-'}`]),
                 DOM_Engine.create('p', 'text-[10px] text-slate-500', {}, [`Berangkat: ${l.waktuKeluar} | Durasi: ${l.durasi} Jam`])
             ])
         ]);

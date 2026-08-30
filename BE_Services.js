@@ -7,7 +7,7 @@
 
 function doGet(e) {
   // 1. Logika Verifikasi Publik (Tanpa Login)
-  if (e.parameter.verify_st && e.parameter.nrpp) {
+if (e.parameter.verify_st && e.parameter.nrpp) {
     return renderPublicVerification(
       e.parameter.verify_st,
       e.parameter.nrpp
